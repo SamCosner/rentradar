@@ -617,10 +617,16 @@ def _get_secret(key):
 
 @st.cache_data(ttl=3600)
 def load_data():
-    _supabase = create_client(
-        _get_secret("SUPABASE_URL"),
-        _get_secret("SUPABASE_KEY"),
-    )
+    _url = _get_secret("SUPABASE_URL")
+    _key = _get_secret("SUPABASE_KEY")
+    if not _url or not _key:
+        st.error(
+            "Missing Supabase credentials. "
+            "Add **SUPABASE_URL** and **SUPABASE_KEY** to your Streamlit secrets. "
+            f"(URL found: {bool(_url)}, Key found: {bool(_key)})"
+        )
+        st.stop()
+    _supabase = create_client(_url, _key)
     result = _supabase.table("listings").select("*").execute()
     df = pd.DataFrame(result.data)
     df["rent"]         = pd.to_numeric(df["rent"],         errors="coerce")
