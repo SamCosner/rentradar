@@ -607,11 +607,19 @@ _CSV_COLUMNS = [
 ]
 
 
+def _get_secret(key):
+    """Read from st.secrets (Streamlit Cloud) with fallback to env vars (local)."""
+    try:
+        return st.secrets[key]
+    except (KeyError, FileNotFoundError):
+        return os.environ.get(key)
+
+
 @st.cache_data(ttl=3600)
 def load_data():
     _supabase = create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"]
+        _get_secret("SUPABASE_URL"),
+        _get_secret("SUPABASE_KEY"),
     )
     result = _supabase.table("listings").select("*").execute()
     df = pd.DataFrame(result.data)
