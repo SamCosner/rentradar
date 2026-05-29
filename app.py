@@ -638,6 +638,9 @@ def load_data():
         st.stop()
     _supabase = create_client(_url, _key)
     result = _supabase.table("listings").select("*").execute()
+    if not result.data:
+        st.warning("The Supabase listings table is empty. Run the scraper or upload your CSV data to populate it.")
+        st.stop()
     df = pd.DataFrame(result.data)
     df["rent"]         = pd.to_numeric(df["rent"],         errors="coerce")
     df["bedrooms"]     = pd.to_numeric(df["bedrooms"],     errors="coerce")
@@ -651,7 +654,10 @@ def load_data():
 
 @st.cache_data
 def load_city_addresses():
-    cdf = pd.read_csv("data/city_addresses.csv")
+    try:
+        cdf = pd.read_csv("data/city_addresses.csv")
+    except FileNotFoundError:
+        return pd.DataFrame(columns=["Full Street Address", "Latitude", "Longitude", "_norm"])
     cdf["Latitude"]  = pd.to_numeric(cdf["Latitude"],  errors="coerce")
     cdf["Longitude"] = pd.to_numeric(cdf["Longitude"], errors="coerce")
     cdf = cdf.dropna(subset=["Latitude", "Longitude"])
