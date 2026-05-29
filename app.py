@@ -612,7 +612,12 @@ def _get_secret(key):
     try:
         return st.secrets[key]
     except (KeyError, FileNotFoundError):
-        return os.environ.get(key)
+        pass
+    try:
+        return st.secrets["secrets"][key]
+    except (KeyError, FileNotFoundError):
+        pass
+    return os.environ.get(key)
 
 
 @st.cache_data(ttl=3600)
