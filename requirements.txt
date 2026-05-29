@@ -1,0 +1,9 @@
+streamlit
+pandas
+plotly
+pydeck
+requests
+beautifulsoup4
+streamlit-authenticator
+supabase
+python-dotenv
