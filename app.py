@@ -610,8 +610,8 @@ _CSV_COLUMNS = [
 @st.cache_data(ttl=3600)
 def load_data():
     _supabase = create_client(
-        st.secrets("SUPABASE_URL"),
-        st.secrets("SUPABASE_KEY"),
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
     )
     result = _supabase.table("listings").select("*").execute()
     df = pd.DataFrame(result.data)
