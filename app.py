@@ -1392,7 +1392,7 @@ if _active_page == "Overview":
 if _active_page == "Pricing Intelligence":
     render_filter_bar()
     # ── Filter 1: outlier rents ───────────────────────────────────────────────
-    _pi = latest_df[latest_df["rent"].between(400, 12_000)].copy()
+    _pi = active_df[active_df["rent"].between(400, 12_000)].copy()
 
     # ── Filter 2: short-term / partial-semester listings ──────────────────────
     _today     = pd.Timestamp.now().normalize()
@@ -1409,7 +1409,7 @@ if _active_page == "Pricing Intelligence":
     _valid_beds  = _bed_counts[_bed_counts >= 5].index
     pricing_df   = _pi[_pi["bedrooms"].isin(_valid_beds)]
 
-    _n_excluded  = len(latest_df) - len(pricing_df)
+    _n_excluded  = len(active_df) - len(pricing_df)
 
     render_kpi_row(latest_df, prev_df, active_df, prev_active_df)
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
