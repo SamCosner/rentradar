@@ -637,11 +637,21 @@ def load_data():
         )
         st.stop()
     _supabase = create_client(_url, _key)
-    result = _supabase.table("listings").select("*").execute()
-    if not result.data:
+    _all_rows = []
+    _page_size = 1000
+    _offset = 0
+    while True:
+        _result = _supabase.table("listings").select("*").range(_offset, _offset + _page_size - 1).execute()
+        if not _result.data:
+            break
+        _all_rows.extend(_result.data)
+        if len(_result.data) < _page_size:
+            break
+        _offset += _page_size
+    if not _all_rows:
         st.warning("The Supabase listings table is empty. Run the scraper or upload your CSV data to populate it.")
         st.stop()
-    df = pd.DataFrame(result.data)
+    df = pd.DataFrame(_all_rows)
     df["rent"]         = pd.to_numeric(df["rent"],         errors="coerce")
     df["bedrooms"]     = pd.to_numeric(df["bedrooms"],     errors="coerce")
     df["scraped_date"] = pd.to_datetime(df["scraped_date"], errors="coerce").dt.normalize()
