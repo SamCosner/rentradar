@@ -1065,7 +1065,7 @@ IU_CAMPUS_POLYGON = [[
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 _NAV_PAGES = [
     "Overview",
-    "Pricing",
+    "Pricing Intelligence",
     "Map",
     "Forecast",
     "Companies",
@@ -1390,35 +1390,25 @@ if _active_page == "Overview":
         )
 
 if _active_page == "Pricing Intelligence":
-    try:
-        render_filter_bar()
-    except Exception as _e:
-        st.error(f"Filter bar error: {_e}")
-    st.write(f"DEBUG — active_df rows: {len(active_df)}, rent null: {active_df['rent'].isna().sum()}, bed null: {active_df['bedrooms'].isna().sum()}")
-    try:
-        # ── Filter 1: outlier rents ───────────────────────────────────────────────
-        _pi = active_df[active_df["rent"].between(400, 12_000)].copy()
-        st.write(f"DEBUG — after rent filter: {len(_pi)}")
+    render_filter_bar()
 
-        # ── Filter 2: short-term / partial-semester listings ──────────────────────
-        _today     = pd.Timestamp.now().normalize()
-        _cutoff    = _today + pd.Timedelta(days=60)
-        _avail_dt  = pd.to_datetime(_pi["available"], errors="coerce")
-        _med_by_bd = _pi.groupby("bedrooms")["rent"].median()
-        _threshold = _pi["bedrooms"].map(_med_by_bd) * 0.6
-        _soon      = _avail_dt < _cutoff          # NaT → False (safe)
-        _cheap     = _pi["rent"] < _threshold     # NaN threshold → False (safe)
-        _pi        = _pi[~(_soon & _cheap)]
-        st.write(f"DEBUG — after short-term filter: {len(_pi)}")
+    # ── Filter 1: outlier rents ───────────────────────────────────────────────
+    _pi = active_df[active_df["rent"].between(400, 12_000)].copy()
 
-        # ── Filter 3: minimum 5 listings per bedroom count ────────────────────────
-        _bed_counts  = _pi["bedrooms"].value_counts()
-        _valid_beds  = _bed_counts[_bed_counts >= 5].index
-        pricing_df   = _pi[_pi["bedrooms"].isin(_valid_beds)]
-        st.write(f"DEBUG — bed counts: {_bed_counts.to_dict()}, pricing_df rows: {len(pricing_df)}")
-    except Exception as _e:
-        st.error(f"Pricing filter error: {_e}")
-        pricing_df = pd.DataFrame()
+    # ── Filter 2: short-term / partial-semester listings ──────────────────────
+    _today     = pd.Timestamp.now().normalize()
+    _cutoff    = _today + pd.Timedelta(days=60)
+    _avail_dt  = pd.to_datetime(_pi["available"], errors="coerce")
+    _med_by_bd = _pi.groupby("bedrooms")["rent"].median()
+    _threshold = _pi["bedrooms"].map(_med_by_bd) * 0.6
+    _soon      = _avail_dt < _cutoff
+    _cheap     = _pi["rent"] < _threshold
+    _pi        = _pi[~(_soon & _cheap)]
+
+    # ── Filter 3: minimum 5 listings per bedroom count ────────────────────────
+    _bed_counts  = _pi["bedrooms"].value_counts()
+    _valid_beds  = _bed_counts[_bed_counts >= 5].index
+    pricing_df   = _pi[_pi["bedrooms"].isin(_valid_beds)]
 
     _n_excluded  = len(active_df) - len(pricing_df)
 
