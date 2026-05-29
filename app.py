@@ -1073,7 +1073,10 @@ st.sidebar.markdown(
 )
 
 with st.sidebar:
-    st.image("images/RentRadarLogo1.png", width=155)
+    st.markdown(
+        '<div style="font-size:18px;font-weight:700;color:#111827;padding:4px 4px 0;">RentRadar</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         '<div style="height:1px;background:#E5E7EB;margin:14px -1rem 6px;"></div>',
         unsafe_allow_html=True,
