@@ -1391,8 +1391,10 @@ if _active_page == "Overview":
 
 if _active_page == "Pricing Intelligence":
     render_filter_bar()
+    st.write(f"DEBUG — active_df rows: {len(active_df)}, rent sample: {active_df['rent'].dropna().head(3).tolist()}, bedrooms sample: {active_df['bedrooms'].dropna().head(3).tolist()}")
     # ── Filter 1: outlier rents ───────────────────────────────────────────────
     _pi = active_df[active_df["rent"].between(400, 12_000)].copy()
+    st.write(f"DEBUG — after rent filter: {len(_pi)}")
 
     # ── Filter 2: short-term / partial-semester listings ──────────────────────
     _today     = pd.Timestamp.now().normalize()
@@ -1403,11 +1405,13 @@ if _active_page == "Pricing Intelligence":
     _soon      = _avail_dt < _cutoff          # NaT → False (safe)
     _cheap     = _pi["rent"] < _threshold     # NaN threshold → False (safe)
     _pi        = _pi[~(_soon & _cheap)]
+    st.write(f"DEBUG — after short-term filter: {len(_pi)}")
 
     # ── Filter 3: minimum 5 listings per bedroom count ────────────────────────
     _bed_counts  = _pi["bedrooms"].value_counts()
     _valid_beds  = _bed_counts[_bed_counts >= 5].index
     pricing_df   = _pi[_pi["bedrooms"].isin(_valid_beds)]
+    st.write(f"DEBUG — bed counts: {_bed_counts.to_dict()}, pricing_df rows: {len(pricing_df)}")
 
     _n_excluded  = len(active_df) - len(pricing_df)
 
