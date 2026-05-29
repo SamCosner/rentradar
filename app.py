@@ -620,10 +620,15 @@ def load_data():
     _url = _get_secret("SUPABASE_URL")
     _key = _get_secret("SUPABASE_KEY")
     if not _url or not _key:
+        try:
+            _available = list(st.secrets.keys())
+        except Exception:
+            _available = []
         st.error(
             "Missing Supabase credentials. "
             "Add **SUPABASE_URL** and **SUPABASE_KEY** to your Streamlit secrets. "
-            f"(URL found: {bool(_url)}, Key found: {bool(_key)})"
+            f"(URL found: {bool(_url)}, Key found: {bool(_key)}, "
+            f"Keys in st.secrets: {_available})"
         )
         st.stop()
     _supabase = create_client(_url, _key)
