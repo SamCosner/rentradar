@@ -5,6 +5,11 @@ import plotly.graph_objects as go
 import pydeck as pdk
 import math
 import re
+import os
+from supabase import create_client
+from dotenv import load_dotenv
+
+load_dotenv()
 st.set_page_config(page_title="RentRadar", layout="wide", initial_sidebar_state="expanded")
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
@@ -602,18 +607,19 @@ _CSV_COLUMNS = [
 ]
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
-    with open("data/bloomington_rents_master.csv") as f:
-        has_header = f.readline().split(",")[0].strip().strip('"') == "scraped_date"
-    df = pd.read_csv(
-        "data/bloomington_rents_master.csv",
-        header=0 if has_header else None,
-        names=None if has_header else _CSV_COLUMNS,
+    _supabase = create_client(
+        os.environ.get("SUPABASE_URL"),
+        os.environ.get("SUPABASE_KEY"),
     )
-    df["rent"] = pd.to_numeric(df["rent"], errors="coerce")
-    df["bedrooms"] = pd.to_numeric(df["bedrooms"], errors="coerce")
+    result = _supabase.table("listings").select("*").execute()
+    df = pd.DataFrame(result.data)
+    df["rent"]         = pd.to_numeric(df["rent"],         errors="coerce")
+    df["bedrooms"]     = pd.to_numeric(df["bedrooms"],     errors="coerce")
     df["scraped_date"] = pd.to_datetime(df["scraped_date"], errors="coerce").dt.normalize()
+    df["lat"]          = pd.to_numeric(df["lat"],          errors="coerce")
+    df["lng"]          = pd.to_numeric(df["lng"],          errors="coerce")
     df = df[df["rent"] > 0]
     df = df[df["bedrooms"] <= 7]
     return df
@@ -698,6 +704,8 @@ def _init_state():
         ss.active_page = "Overview"
     if "flt_companies" not in ss:
         ss.flt_companies = []          # empty list = no filter = show all companies
+    if "overview_expanded_kpi" not in ss:
+        ss.overview_expanded_kpi = None
     for pt in _all_prop_types:
         if f"pt_{pt}" not in ss:
             ss[f"pt_{pt}"] = True
@@ -950,6 +958,31 @@ def render_kpi_row(latest_df: pd.DataFrame, prev_df: pd.DataFrame,
             st.markdown(kpi_card(label, value, delta, dc), unsafe_allow_html=True)
 
 
+# ── KPI history ───────────────────────────────────────────────────────────────
+@st.cache_data
+def compute_kpi_history(_df):
+    """For each scrape date, compute active listings, avg rent/bed, avg days listed, companies."""
+    dates = sorted(_df["scraped_date"].dropna().unique())
+    rows = []
+    for d in dates:
+        sub = _df[_df["scraped_date"] <= d]
+        url_last = sub.sort_values("scraped_date").groupby("url").last().reset_index()
+        active = url_last[url_last["event"] != "removed"]
+        n = len(active)
+        rpb = (active["rent"] / active["bedrooms"].replace(0, float("nan"))).mean() if n else float("nan")
+        first_seen = sub.groupby("url")["scraped_date"].min().rename("first_seen")
+        dom_series = active.join(first_seen, on="url", how="left")["first_seen"]
+        avg_dom = ((pd.Timestamp(d) - dom_series).dt.days).mean() if n else float("nan")
+        rows.append({
+            "date":      pd.Timestamp(d),
+            "active":    n,
+            "rpb":       rpb,
+            "dom":       avg_dom,
+            "companies": active["company"].nunique() if n else 0,
+        })
+    return pd.DataFrame(rows)
+
+
 # ── Campus constants (shared by Map and Companies tabs) ───────────────────────
 CAMPUS_LAT = 39.179416
 CAMPUS_LNG = -86.513358
@@ -992,7 +1025,7 @@ IU_CAMPUS_POLYGON = [[
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 _NAV_PAGES = [
     "Overview",
-    "Pricing Intelligence",
+    "Pricing",
     "Map",
     "Forecast",
     "Companies",
@@ -1056,6 +1089,61 @@ prev_active_df = _url_last_prev[_url_last_prev["event"] != "removed"]
 if _active_page == "Overview":
     render_filter_bar()
     render_kpi_row(latest_df, prev_df, active_df, prev_active_df)
+
+    # ── KPI history toggle buttons ────────────────────────────────────────────
+    _KPI_DEFS = [
+        ("active",    "Active listings"),
+        ("rpb",       "Avg rent / bed"),
+        ("dom",       "Avg days listed"),
+        ("companies", "Companies tracked"),
+    ]
+    st.markdown("""<style>
+    button[aria-label^="▾ Active listings"], button[aria-label^="▴ Active listings"],
+    button[aria-label^="▾ Avg rent / bed"], button[aria-label^="▴ Avg rent / bed"],
+    button[aria-label^="▾ Avg days listed"], button[aria-label^="▴ Avg days listed"],
+    button[aria-label^="▾ Companies tracked"], button[aria-label^="▴ Companies tracked"] {
+        background: transparent !important; border: none !important;
+        color: #9CA3AF !important; font-size: 11px !important;
+        padding: 1px 0 !important; min-height: 0 !important; height: 22px !important;
+        box-shadow: none !important; width: 100% !important;
+        text-align: center !important; text-decoration: underline !important;
+    }
+    button[aria-label^="▴ "] { color: #2563EB !important; }
+    </style>""", unsafe_allow_html=True)
+
+    _hc1, _hc2, _hc3, _hc4 = st.columns(4)
+    for _hcol, (_hkey, _hlabel) in zip([_hc1, _hc2, _hc3, _hc4], _KPI_DEFS):
+        with _hcol:
+            _is_open = st.session_state.overview_expanded_kpi == _hkey
+            _btn_lbl = f"▴ {_hlabel}" if _is_open else f"▾ {_hlabel}"
+            if st.button(_btn_lbl, key=f"kpi_hist_{_hkey}"):
+                st.session_state.overview_expanded_kpi = None if _is_open else _hkey
+
+    _expanded_kpi = st.session_state.overview_expanded_kpi
+    if _expanded_kpi:
+        _hist_df = compute_kpi_history(filtered)
+        _kpi_chart_meta = {
+            "active":    ("Active Listings Over Time",   "active",    "Active Listings"),
+            "rpb":       ("Avg Rent / Bed Over Time",    "rpb",       "Avg $/bed"),
+            "dom":       ("Avg Days Listed Over Time",   "dom",       "Days"),
+            "companies": ("Companies Tracked Over Time", "companies", "Companies"),
+        }
+        _cht_title, _cht_col, _cht_ylabel = _kpi_chart_meta[_expanded_kpi]
+        _hist_plot = _hist_df.dropna(subset=[_cht_col])
+        if not _hist_plot.empty:
+            _fig_hist = px.line(
+                _hist_plot, x="date", y=_cht_col,
+                labels={"date": "", _cht_col: _cht_ylabel},
+                color_discrete_sequence=["#2563eb"],
+            )
+            _fig_hist.update_traces(mode="lines+markers", marker=dict(size=4))
+            _fig_hist.update_layout(
+                **_chart_layout(_cht_title, height=240),
+            )
+            if _cht_col == "rpb":
+                _fig_hist.update_layout(yaxis=dict(tickprefix="$"))
+            st.plotly_chart(_fig_hist, use_container_width=True)
+
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
     # Clean data for rent chart — same three filters as Pricing Intelligence
@@ -1073,7 +1161,9 @@ if _active_page == "Overview":
         avg_rent, x="bedrooms", y="rent",
         labels={"bedrooms": "Bedrooms", "rent": "Avg rent ($)"},
         color_discrete_sequence=["#2563eb"],
+        text=avg_rent["rent"].apply(lambda v: f"${v:,.0f}"),
     )
+    fig1.update_traces(textposition="outside", textfont=dict(size=11, color="#374151"))
     fig1.update_layout(**_chart_layout("Average Rent by Bedroom Count"), showlegend=False)
 
     company_counts = (
@@ -1084,7 +1174,9 @@ if _active_page == "Overview":
         company_counts, x="listings", y="company", orientation="h",
         labels={"listings": "Listings", "company": ""},
         color_discrete_sequence=["#2563eb"],
+        text="listings",
     )
+    fig2.update_traces(textposition="outside", textfont=dict(size=11, color="#374151"))
     fig2.update_layout(**_chart_layout("Active Listings by Company"))
 
     chart_col1, chart_col2 = st.columns(2)
@@ -1137,9 +1229,13 @@ if _active_page == "Overview":
     _new_act["_type"] = "new"
     _new_act["_old_rent"] = pd.NA
 
-    _rem_act = filtered[
+    _rem_raw = filtered[
         (filtered["event"] == "removed") & (filtered["scraped_date"] >= _act_cutoff)
-    ][_act_cols].copy()
+    ].copy()
+    # Keep only the most recent removal per URL — the scraper bug could write
+    # duplicate "removed" rows for the same listing across consecutive runs.
+    _rem_raw = _rem_raw.sort_values("scraped_date").groupby("url", as_index=False).last()
+    _rem_act = _rem_raw[_act_cols].copy()
     _rem_act["_type"] = "removed"
     _rem_act["_old_rent"] = pd.NA
 

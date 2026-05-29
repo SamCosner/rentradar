@@ -2,6 +2,14 @@ import requests
 from bs4 import BeautifulSoup
 import csv, re, time, os
 from datetime import datetime
+from supabase import create_client
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ── Geocoding ─────────────────────────────────────────────────────────────────
 
@@ -309,18 +317,29 @@ def make_key(row):
 
 
 def load_last_seen():
-    """
-    Read the master CSV and return a dict mapping key → the most recent
-    row for that listing. Used to detect changes and preserve available dates.
-    """
+    """Load most recent row per URL from Supabase, falling back to local CSV."""
     last_seen = {}
-    if not os.path.isfile(MASTER_FILE):
-        return last_seen
-    with open(MASTER_FILE, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
+    try:
+        result = supabase.table("listings")\
+            .select("*")\
+            .neq("event", "removed")\
+            .order("scraped_date", desc=True)\
+            .execute()
+        for row in result.data:
             key = make_key(row)
-            if key and row.get("event") != "removed":
+            if key and key not in last_seen:
                 last_seen[key] = row
+    except Exception as e:
+        print(f"Supabase load error: {e}")
+        print("Falling back to local CSV...")
+        if os.path.isfile(MASTER_FILE):
+            with open(MASTER_FILE, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    key = make_key(row)
+                    if key:
+                        last_seen[key] = row
+            # Exclude listings whose last event was "removed"
+            last_seen = {k: v for k, v in last_seen.items() if v.get("event") != "removed"}
     return last_seen
 
 
@@ -333,7 +352,8 @@ def has_changed(new_row, old_row):
 
 
 def append_to_master(rows):
-    # Write header if file doesn't exist OR is empty
+    """Write rows to local CSV backup and Supabase."""
+    # Local CSV backup
     file_exists = os.path.isfile(MASTER_FILE) and os.path.getsize(MASTER_FILE) > 0
     with open(MASTER_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
@@ -341,6 +361,37 @@ def append_to_master(rows):
             writer.writeheader()
             print(f"Created new master file: {MASTER_FILE}")
         writer.writerows(rows)
+
+    # Supabase insert
+    supabase_rows = []
+    for row in rows:
+        supabase_rows.append({
+            "scraped_date":       row.get("scraped_date") or None,
+            "scraped_time":       row.get("scraped_time") or None,
+            "event":              row.get("event") or None,
+            "company":            row.get("company") or None,
+            "address":            row.get("address") or None,
+            "property_type":      row.get("property_type") or None,
+            "rent":               float(row["rent"]) if row.get("rent") else None,
+            "bedrooms":           float(row["bedrooms"]) if row.get("bedrooms") else None,
+            "bathrooms":          float(row["bathrooms"]) if row.get("bathrooms") else None,
+            "sqft":               row.get("sqft") or None,
+            "pets":               row.get("pets") or None,
+            "parking":            row.get("parking") or None,
+            "laundry":            row.get("laundry") or None,
+            "utilities_included": row.get("utilities_included") or None,
+            "available":          row.get("available") or None,
+            "url":                row.get("url") or None,
+            "lat":                float(row["lat"]) if row.get("lat") else None,
+            "lng":                float(row["lng"]) if row.get("lng") else None,
+            "address_matched":    row.get("address_matched") or None,
+        })
+
+    batch_size = 500
+    for i in range(0, len(supabase_rows), batch_size):
+        batch = supabase_rows[i:i + batch_size]
+        supabase.table("listings").insert(batch).execute()
+        print(f"  Inserted batch {i//batch_size + 1} ({len(batch)} rows) to Supabase")
 
 
 # ── Run ──────────────────────────────────────────────────────────────────────
