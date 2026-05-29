@@ -1,4 +1,5 @@
 data/
+!data/city_addresses.csv
 __pycache__/
 *.pyc
 .env
