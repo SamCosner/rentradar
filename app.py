@@ -3298,11 +3298,22 @@ if _active_page == "AI Export":
     if ss.market_report:
         _report_lines = ss.market_report.count("\n") + 1
         _report_words = len(ss.market_report.split())
-        st.markdown(
-            f'<div style="color:#6b7280;font-size:12px;margin-bottom:10px;">'
-            f'Generated {ss.market_report_time} &nbsp;·&nbsp; ~{_report_words:,} words &nbsp;·&nbsp; {_report_lines:,} lines</div>',
-            unsafe_allow_html=True,
-        )
+        _dl_btn, _meta_col = st.columns([1, 4])
+        with _dl_btn:
+            _dl_filename = f"bloomington_rental_report_{ss.market_report_time.replace(':', '-').replace(' ', '_')}.md"
+            st.download_button(
+                label="Download .md",
+                data=ss.market_report.encode("utf-8"),
+                file_name=_dl_filename,
+                mime="text/markdown",
+                use_container_width=True,
+            )
+        with _meta_col:
+            st.markdown(
+                f'<div style="color:#6b7280;font-size:12px;padding-top:10px;">'
+                f'Generated {ss.market_report_time} &nbsp;·&nbsp; ~{_report_words:,} words &nbsp;·&nbsp; {_report_lines:,} lines</div>',
+                unsafe_allow_html=True,
+            )
 
         _col_code, _col_prev = st.columns([3, 2])
 
