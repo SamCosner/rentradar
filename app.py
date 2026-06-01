@@ -178,6 +178,10 @@ section[data-testid="stSidebar"],
 [data-testid="stSidebar"] button[aria-label="Companies"]::before {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z'/%3E%3Cpath d='M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2'/%3E%3Cpath d='M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2'/%3E%3Cpath d='M10 6h4'/%3E%3Cpath d='M10 10h4'/%3E%3Cpath d='M10 14h4'/%3E%3Cpath d='M10 18h4'/%3E%3C/svg%3E") !important;
 }
+/* AI Export — sparkle */
+[data-testid="stSidebar"] button[aria-label="AI Export"]::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3L13.5 8.5L19 10L13.5 11.5L12 17L10.5 11.5L5 10L10.5 8.5Z'/%3E%3Cpath d='M19 3L19.75 5.25L22 6L19.75 6.75L19 9L18.25 6.75L16 6L18.25 5.25Z'/%3E%3Cpath d='M5 17L5.5 18.5L7 19L5.5 19.5L5 21L4.5 19.5L3 19L4.5 18.5Z'/%3E%3C/svg%3E") !important;
+}
 
 /* ═══════════════════════════════════════════════
    SCROLLBAR
@@ -820,6 +824,10 @@ def _init_state():
         ss.student_radius = 0.5
     if "rental_type_filter" not in ss:
         ss.rental_type_filter = "All"
+    if "market_report" not in ss:
+        ss.market_report = None
+    if "market_report_time" not in ss:
+        ss.market_report_time = None
 
 
 _init_state()
@@ -1168,6 +1176,7 @@ _NAV_PAGES = [
     "Map",
     "Forecast",
     "Companies",
+    "AI Export",
 ]
 
 _active_page = st.session_state.active_page
@@ -3033,3 +3042,281 @@ if _active_page == "Companies":
             "4W Trend":    st.column_config.NumberColumn("4W Trend",    format="%+.0f"),
         },
     )
+
+
+# ── AI Export ─────────────────────────────────────────────────────────────────
+def generate_market_report() -> str:
+    """Build a 15-section markdown market intelligence report from unfiltered data."""
+    import datetime as _dt
+
+    _radius = st.session_state.get("student_radius", 0.5)
+    _rdf = df.copy()
+    _rdf["is_student_rental"] = _rdf["dist_miles"] <= _radius
+
+    # Active listings: last event per URL is not "removed"
+    _last = (
+        _rdf.sort_values("scraped_date")
+        .groupby("url", as_index=False)
+        .last()
+    )
+    _active = _last[_last["event"] != "removed"].copy()
+
+    # Days on market
+    _first_seen = (
+        _rdf.groupby("url")["scraped_date"]
+        .min()
+        .reset_index()
+        .rename(columns={"scraped_date": "first_seen"})
+    )
+    _active = _active.merge(_first_seen, on="url", how="left")
+    _today = pd.Timestamp(_dt.date.today())
+    _active["days_on_market"] = (_today - pd.to_datetime(_active["first_seen"], errors="coerce")).dt.days.fillna(0).astype(int)
+
+    _student_df     = _active[_active["is_student_rental"] == True]
+    _non_student_df = _active[_active["is_student_rental"] == False]
+
+    def _fmt_beds_table(sub, label):
+        rows = []
+        for bd in sorted(sub["bedrooms"].dropna().unique()):
+            b = sub[sub["bedrooms"] == bd]
+            rows.append(f"| {int(bd) if bd == int(bd) else bd}BR | {len(b)} | ${b['rent'].median():,.0f} | ${b['rent'].mean():,.0f} | ${b['rent'].min():,.0f}–${b['rent'].max():,.0f} |")
+        if not rows:
+            return f"*No {label} listings.*"
+        header = f"| Beds | Units | Median | Avg | Range |\n|------|-------|--------|-----|-------|"
+        return header + "\n" + "\n".join(rows)
+
+    def _fmt_company_table(sub):
+        grp = (
+            sub.groupby("company")["rent"]
+            .agg(count="count", median="median", mean="mean")
+            .sort_values("count", ascending=False)
+            .head(10)
+        )
+        rows = [f"| {co} | {int(row['count'])} | ${row['median']:,.0f} | ${row['mean']:,.0f} |"
+                for co, row in grp.iterrows()]
+        if not rows:
+            return "*No data.*"
+        return "| Company | Units | Median Rent | Avg Rent |\n|---------|-------|-------------|----------|\n" + "\n".join(rows)
+
+    _n_active      = len(_active)
+    _n_student     = len(_student_df)
+    _n_non_student = len(_non_student_df)
+    _med_rent      = _active["rent"].median() if _n_active else 0
+    _avg_rent      = _active["rent"].mean()   if _n_active else 0
+    _med_student   = _student_df["rent"].median()     if _n_student     else 0
+    _med_non_stud  = _non_student_df["rent"].median() if _n_non_student else 0
+    _avg_dom       = _active["days_on_market"].mean() if _n_active else 0
+
+    # Weekly new listings
+    _cutoff_1w = pd.Timestamp(_today - pd.Timedelta(days=7))
+    _new_week  = _rdf[pd.to_datetime(_rdf["scraped_date"], errors="coerce") >= _cutoff_1w]
+    _new_week_added   = len(_new_week[_new_week["event"] == "new"])
+    _new_week_removed = len(_new_week[_new_week["event"] == "removed"])
+
+    # Price changes past 30 days
+    _cutoff_30d = pd.Timestamp(_today - pd.Timedelta(days=30))
+    _price_chg = _rdf[
+        (pd.to_datetime(_rdf["scraped_date"], errors="coerce") >= _cutoff_30d) &
+        (_rdf["event"] == "price_change")
+    ]
+    _n_price_chg = len(_price_chg)
+
+    # Property type breakdown
+    _pt_counts = _active["property_type"].value_counts().head(6)
+    _pt_lines = "\n".join(f"- **{pt}**: {cnt} units" for pt, cnt in _pt_counts.items())
+
+    # Distance buckets
+    _bins   = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, float("inf")]
+    _blabels = ["0–¼ mi", "¼–½ mi", "½–1 mi", "1–1.5 mi", "1.5–2 mi", "2–3 mi", "3+ mi"]
+    _active["_dist_bucket"] = pd.cut(_active["dist_miles"], bins=_bins, labels=_blabels)
+    _dist_grp = _active.groupby("_dist_bucket", observed=True)["rent"].agg(count="count", median="median")
+    _dist_lines = "\n".join(
+        f"| {bkt} | {int(row['count'])} | ${row['median']:,.0f} |"
+        for bkt, row in _dist_grp.iterrows() if row["count"] > 0
+    )
+
+    # Forecast: simple 4-week vs current median
+    _cutoff_4w = pd.Timestamp(_today - pd.Timedelta(days=28))
+    _four_weeks_ago_last = (
+        _rdf[pd.to_datetime(_rdf["scraped_date"], errors="coerce") <= _cutoff_4w]
+        .sort_values("scraped_date")
+        .groupby("url", as_index=False)
+        .last()
+    )
+    _four_weeks_ago_active = _four_weeks_ago_last[_four_weeks_ago_last["event"] != "removed"]
+    _med_4w = _four_weeks_ago_active["rent"].median() if len(_four_weeks_ago_active) else _med_rent
+    _rent_delta_4w = _med_rent - _med_4w if (_med_rent and _med_4w) else 0
+
+    _today_str = _today.strftime("%B %d, %Y")
+    _report_date = _today_str
+
+    lines = [
+        f"# Bloomington Rental Market Intelligence Report",
+        f"**Generated:** {_report_date}  |  **Student radius:** {_radius:.2f} mi from campus edge",
+        "",
+        "---",
+        "",
+        "## 1. Market Overview",
+        f"- **Total active listings:** {_n_active:,}",
+        f"- **Median rent (all):** ${_med_rent:,.0f}/mo",
+        f"- **Average rent (all):** ${_avg_rent:,.0f}/mo",
+        f"- **Student rentals (≤{_radius:.2f} mi):** {_n_student:,} ({_n_student/_n_active*100:.1f}% of market)" if _n_active else f"- **Student rentals:** {_n_student}",
+        f"- **Non-student rentals:** {_n_non_student:,}",
+        f"- **Avg days on market:** {_avg_dom:.1f} days",
+        f"- **Data as of:** {_report_date}",
+        "",
+        "---",
+        "",
+        "## 2. Rent by Bedroom Count — All Listings",
+        _fmt_beds_table(_active, "active"),
+        "",
+        "---",
+        "",
+        "## 3. Rent by Bedroom Count — Student Rentals",
+        _fmt_beds_table(_student_df, "student rental"),
+        "",
+        "---",
+        "",
+        "## 4. Rent by Bedroom Count — Non-Student",
+        _fmt_beds_table(_non_student_df, "non-student"),
+        "",
+        "---",
+        "",
+        "## 5. Rent Premium Analysis",
+        f"- **Median student rent:** ${_med_student:,.0f}/mo" if _n_student else "- *No student rental data.*",
+        f"- **Median non-student rent:** ${_med_non_stud:,.0f}/mo" if _n_non_student else "- *No non-student rental data.*",
+    ]
+    if _n_student and _n_non_student and _med_non_stud:
+        _premium_pct = (_med_student - _med_non_stud) / _med_non_stud * 100
+        _premium_label = "premium" if _premium_pct >= 0 else "discount"
+        lines.append(f"- **Student rental {_premium_label}:** {abs(_premium_pct):.1f}% vs non-student")
+    lines += [
+        "",
+        "---",
+        "",
+        "## 6. Top Companies — All Listings",
+        _fmt_company_table(_active),
+        "",
+        "---",
+        "",
+        "## 7. Top Companies — Student Rentals",
+        _fmt_company_table(_student_df),
+        "",
+        "---",
+        "",
+        "## 8. Top Companies — Non-Student",
+        _fmt_company_table(_non_student_df),
+        "",
+        "---",
+        "",
+        "## 9. Vacancy & Availability",
+        f"- **Listings available immediately:** {(_active['available'].str.lower().str.contains('now|immediate|available', na=False)).sum():,}" if "available" in _active.columns else "- *No availability data.*",
+        f"- **Avg days on market:** {_avg_dom:.1f} days",
+        f"- **Total historical listings tracked:** {len(_rdf['url'].unique()):,}",
+        "",
+        "---",
+        "",
+        "## 10. 4-Week Trend & Forecast",
+        f"- **Median rent 4 weeks ago:** ${_med_4w:,.0f}/mo",
+        f"- **Median rent today:** ${_med_rent:,.0f}/mo",
+        f"- **4-week change:** {'+' if _rent_delta_4w >= 0 else ''}${_rent_delta_4w:,.0f} ({'+' if _rent_delta_4w >= 0 else ''}{_rent_delta_4w/_med_4w*100:.1f}%)" if _med_4w else "- *Insufficient history for trend.*",
+        "",
+        "---",
+        "",
+        "## 11. Weekly Activity (Last 7 Days)",
+        f"- **New listings added:** {_new_week_added:,}",
+        f"- **Listings removed (leased/withdrawn):** {_new_week_removed:,}",
+        f"- **Net change:** {'+' if (_new_week_added - _new_week_removed) >= 0 else ''}{_new_week_added - _new_week_removed:,}",
+        "",
+        "---",
+        "",
+        "## 12. Price Changes (Last 30 Days)",
+        f"- **Total price change events:** {_n_price_chg:,}",
+        "",
+        "---",
+        "",
+        "## 13. Property Type Breakdown",
+        _pt_lines if _pt_lines else "*No property type data.*",
+        "",
+        "---",
+        "",
+        "## 14. Distance from Campus Edge Analysis",
+        "| Distance | Units | Median Rent |",
+        "|----------|-------|-------------|",
+        _dist_lines if _dist_lines else "*No distance data.*",
+        "",
+        "---",
+        "",
+        "## 15. Suggested AI Prompts",
+        "Use this report as context and ask:",
+        "- *Which bedroom count offers the best value per square foot for a student budget?*",
+        "- *Which companies dominate the student rental market and what does that mean for negotiation leverage?*",
+        "- *Based on the 4-week trend, is rent rising or falling? Should a tenant sign now or wait?*",
+        "- *What is the rent premium for being within walking distance of campus, and is it justified?*",
+        "- *Which property types have the most availability and may offer more negotiating room?*",
+        "- *Based on vacancy trends, how tight is this market heading into the next leasing season?*",
+        "",
+        "---",
+        "",
+        f"*Report generated by RentRadar on {_report_date}. Data reflects scraped listings and may not capture all market activity.*",
+    ]
+
+    return "\n".join(lines)
+
+
+if _active_page == "AI Export":
+    ss = st.session_state
+
+    st.markdown("## AI Export")
+    st.markdown(
+        '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:16px 20px;margin-bottom:18px;">'
+        '<div style="font-size:15px;font-weight:600;color:#1e40af;margin-bottom:6px;">How to use this report</div>'
+        '<div style="color:#374151;font-size:13px;line-height:1.6;">'
+        "Generate a complete market intelligence snapshot, then copy and paste it into "
+        "<strong>Claude</strong> or <strong>ChatGPT</strong> to ask questions, surface insights, "
+        "or create summaries. The report uses all listings in the database — your current filters "
+        "do not affect it. The <strong>student rental radius</strong> from the Map page does apply."
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    _cur_radius = ss.get("student_radius", 0.5)
+    st.markdown(
+        f'<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">'
+        f'Student rental boundary: <strong>{_cur_radius:.2f} mi</strong> from campus edge '
+        f'(adjust on the Map page)</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.button("Generate Report", type="primary"):
+        with st.spinner("Building report..."):
+            ss.market_report = generate_market_report()
+            import datetime as _dt2
+            ss.market_report_time = _dt2.datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    if ss.market_report:
+        _report_lines = ss.market_report.count("\n") + 1
+        _report_words = len(ss.market_report.split())
+        st.markdown(
+            f'<div style="color:#6b7280;font-size:12px;margin-bottom:10px;">'
+            f'Generated {ss.market_report_time} &nbsp;·&nbsp; ~{_report_words:,} words &nbsp;·&nbsp; {_report_lines:,} lines</div>',
+            unsafe_allow_html=True,
+        )
+
+        _col_code, _col_prev = st.columns([3, 2])
+
+        with _col_code:
+            st.markdown('<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Report (copy all)</div>', unsafe_allow_html=True)
+            st.code(ss.market_report, language="markdown")
+
+        with _col_prev:
+            st.markdown('<div style="font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Preview</div>', unsafe_allow_html=True)
+            st.markdown(ss.market_report)
+    else:
+        st.markdown(
+            '<div style="color:#9ca3af;font-size:14px;text-align:center;padding:48px 0;">'
+            "Click <strong>Generate Report</strong> to build your market intelligence snapshot."
+            "</div>",
+            unsafe_allow_html=True,
+        )
