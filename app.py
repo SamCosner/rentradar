@@ -1125,8 +1125,8 @@ def compute_kpi_history(_df):
 
 
 # ── Campus constants (shared by Map and Companies tabs) ───────────────────────
-CAMPUS_LAT = 39.179416
-CAMPUS_LNG = -86.513358
+CAMPUS_LAT = 39.171650
+CAMPUS_LNG = -86.523527
 IU_CAMPUS_POLYGON = [[
     [-86.514628, 39.193551], [-86.514611, 39.195748],
     [-86.509885, 39.195710], [-86.509893, 39.196456],
@@ -1929,7 +1929,7 @@ if _active_page == "Map":
         )
         text_layer = pdk.Layer(
             "TextLayer",
-            data=[{"position": [-86.5134, 39.1794], "text": "IU Campus"}],
+            data=[{"position": [-86.523527, 39.171650], "text": "IU Campus"}],
             get_position="position",
             get_text="text",
             get_size=14,
