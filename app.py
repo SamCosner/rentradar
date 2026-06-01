@@ -6,6 +6,7 @@ import pydeck as pdk
 import math
 import re
 import os
+import base64
 from supabase import create_client
 from dotenv import load_dotenv
 
@@ -1130,6 +1131,19 @@ prev_active_df = _url_last_prev[_url_last_prev["event"] != "removed"]
 
 
 if _active_page == "Overview":
+    _banner_path = os.path.join(os.path.dirname(__file__), "Images", "Bloomington_banner.jpeg")
+    if os.path.exists(_banner_path):
+        with open(_banner_path, "rb") as _f:
+            _b64 = base64.b64encode(_f.read()).decode()
+        st.markdown(
+            f'<div style="width:100%;height:220px;border-radius:12px;overflow:hidden;'
+            f'margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.12);">'
+            f'<img src="data:image/jpeg;base64,{_b64}" '
+            f'style="width:100%;height:100%;object-fit:cover;object-position:center 60%;display:block;">'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
     render_filter_bar()
     render_kpi_row(latest_df, prev_df, active_df, prev_active_df)
 
