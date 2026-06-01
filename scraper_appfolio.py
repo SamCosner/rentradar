@@ -519,3 +519,23 @@ if rows_to_save:
     print(f"Saved snapshot to {snapshot_file}")
 else:
     print("\nNo changes detected — nothing saved.")
+
+    # Auto-push updated data notification to GitHub
+import subprocess
+result = subprocess.run(
+    ["git", "add", "scraper_appfolio.py"],
+    cwd=r"C:\Users\samco\Bloomington Rental Data",
+    capture_output=True
+)
+subprocess.run(
+    ["git", "commit", "--allow-empty", "-m", 
+     f"Data update {scraped_date}"],
+    cwd=r"C:\Users\samco\Bloomington Rental Data",
+    capture_output=True
+)
+subprocess.run(
+    ["git", "push"],
+    cwd=r"C:\Users\samco\Bloomington Rental Data",
+    capture_output=True
+)
+print("GitHub push complete")
