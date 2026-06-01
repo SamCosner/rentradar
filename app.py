@@ -598,6 +598,68 @@ def kpi_card(label: str, value: str, delta: str = "—", delta_class: str = "neu
 </div>"""
 
 
+# ── Campus geometry & distance helpers ───────────────────────────────────────
+# West, south, and southeast sides only — excludes north side (hospital, Greek Row, golf course)
+STUDENT_BOUNDARY = [
+    [-86.490585, 39.182238],
+    [-86.490260, 39.176393],
+    [-86.495486, 39.175992],
+    [-86.495368, 39.171468],
+    [-86.500121, 39.171545],
+    [-86.503995, 39.171554],
+    [-86.506417, 39.171731],
+    [-86.507215, 39.171413],
+    [-86.507213, 39.170511],
+    [-86.507187, 39.168894],
+    [-86.509459, 39.167573],
+    [-86.509444, 39.165757],
+    [-86.509412, 39.164271],
+    [-86.510910, 39.164270],
+    [-86.514209, 39.164266],
+    [-86.517429, 39.164284],
+    [-86.521062, 39.164262],
+    [-86.525215, 39.164284],
+    [-86.526910, 39.164314],
+    [-86.526919, 39.165558],
+    [-86.526944, 39.167524],
+    [-86.526959, 39.168509],
+]
+
+# Centroid of STUDENT_BOUNDARY — used as ring center so rings appear to radiate from the edge
+_sb_lats = [p[1] for p in STUDENT_BOUNDARY]
+_sb_lngs = [p[0] for p in STUDENT_BOUNDARY]
+RING_CENTER_LAT = sum(_sb_lats) / len(_sb_lats)
+RING_CENTER_LNG = sum(_sb_lngs) / len(_sb_lngs)
+
+
+def _dist_point_to_segment_miles(plat, plng, alat, alng, blat, blng):
+    scale_lat = 69.0
+    scale_lng = 69.0 * math.cos(math.radians(plat))
+    px = (plng - alng) * scale_lng
+    py = (plat - alat) * scale_lat
+    dx = (blng - alng) * scale_lng
+    dy = (blat - alat) * scale_lat
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq == 0:
+        return math.sqrt(px * px + py * py)
+    t = max(0.0, min(1.0, (px * dx + py * dy) / seg_len_sq))
+    closest_x = t * dx - px
+    closest_y = t * dy - py
+    return math.sqrt(closest_x ** 2 + closest_y ** 2)
+
+
+def dist_to_campus_edge_miles(lat, lng):
+    """Shortest distance in miles from a point to the student-facing campus boundary."""
+    min_dist = float("inf")
+    for i in range(len(STUDENT_BOUNDARY) - 1):
+        alng, alat = STUDENT_BOUNDARY[i]
+        blng, blat = STUDENT_BOUNDARY[i + 1]
+        d = _dist_point_to_segment_miles(lat, lng, alat, alng, blat, blng)
+        if d < min_dist:
+            min_dist = d
+    return min_dist
+
+
 # ── Data loading ──────────────────────────────────────────────────────────────
 _CSV_COLUMNS = [
     "scraped_date", "scraped_time", "event",
@@ -701,6 +763,12 @@ def _geocode_addr(addr: str, cdf: pd.DataFrame):
 
 
 df = load_data()
+df["dist_miles"] = df.apply(
+    lambda r: dist_to_campus_edge_miles(r["lat"], r["lng"])
+    if pd.notna(r["lat"]) and pd.notna(r["lng"]) and r["lat"] != 0 and r["lng"] != 0
+    else float("nan"),
+    axis=1,
+)
 latest_date    = df["scraped_date"].max()
 _city_addr_df  = load_city_addresses()
 
@@ -1094,75 +1162,6 @@ IU_CAMPUS_POLYGON = [[
     [-86.514545, 39.189821], [-86.514573, 39.190623],
     [-86.514578, 39.192256], [-86.514628, 39.193551],
 ]]
-
-# West, south, and southeast sides only — excludes north side (hospital, Greek Row, golf course)
-STUDENT_BOUNDARY = [
-    [-86.490585, 39.182238],
-    [-86.490260, 39.176393],
-    [-86.495486, 39.175992],
-    [-86.495368, 39.171468],
-    [-86.500121, 39.171545],
-    [-86.503995, 39.171554],
-    [-86.506417, 39.171731],
-    [-86.507215, 39.171413],
-    [-86.507213, 39.170511],
-    [-86.507187, 39.168894],
-    [-86.509459, 39.167573],
-    [-86.509444, 39.165757],
-    [-86.509412, 39.164271],
-    [-86.510910, 39.164270],
-    [-86.514209, 39.164266],
-    [-86.517429, 39.164284],
-    [-86.521062, 39.164262],
-    [-86.525215, 39.164284],
-    [-86.526910, 39.164314],
-    [-86.526919, 39.165558],
-    [-86.526944, 39.167524],
-    [-86.526959, 39.168509],
-]
-
-# Centroid of STUDENT_BOUNDARY — used as ring center so rings appear to radiate from the edge
-_sb_lats = [p[1] for p in STUDENT_BOUNDARY]
-_sb_lngs = [p[0] for p in STUDENT_BOUNDARY]
-RING_CENTER_LAT = sum(_sb_lats) / len(_sb_lats)
-RING_CENTER_LNG = sum(_sb_lngs) / len(_sb_lngs)
-
-
-def _dist_point_to_segment_miles(plat, plng, alat, alng, blat, blng):
-    scale_lat = 69.0
-    scale_lng = 69.0 * math.cos(math.radians(plat))
-    px = (plng - alng) * scale_lng
-    py = (plat - alat) * scale_lat
-    dx = (blng - alng) * scale_lng
-    dy = (blat - alat) * scale_lat
-    seg_len_sq = dx * dx + dy * dy
-    if seg_len_sq == 0:
-        return math.sqrt(px * px + py * py)
-    t = max(0.0, min(1.0, (px * dx + py * dy) / seg_len_sq))
-    closest_x = t * dx - px
-    closest_y = t * dy - py
-    return math.sqrt(closest_x ** 2 + closest_y ** 2)
-
-
-def dist_to_campus_edge_miles(lat, lng):
-    """Shortest distance in miles from a point to the student-facing campus boundary."""
-    min_dist = float("inf")
-    for i in range(len(STUDENT_BOUNDARY) - 1):
-        alng, alat = STUDENT_BOUNDARY[i]
-        blng, blat = STUDENT_BOUNDARY[i + 1]
-        d = _dist_point_to_segment_miles(lat, lng, alat, alng, blat, blng)
-        if d < min_dist:
-            min_dist = d
-    return min_dist
-
-
-# ── dist_miles pre-computed on the full dataset ───────────────────────────────
-df["dist_miles"] = df.apply(
-    lambda r: dist_to_campus_edge_miles(r["lat"], r["lng"])
-    if pd.notna(r["lat"]) and pd.notna(r["lng"]) and r["lat"] != 0 and r["lng"] != 0
-    else float("nan"),
-    axis=1,
-)
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 _NAV_PAGES = [
