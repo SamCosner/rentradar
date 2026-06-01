@@ -625,11 +625,9 @@ STUDENT_BOUNDARY = [
     [-86.526959, 39.168509],
 ]
 
-# Centroid of STUDENT_BOUNDARY — used as ring center so rings appear to radiate from the edge
-_sb_lats = [p[1] for p in STUDENT_BOUNDARY]
-_sb_lngs = [p[0] for p in STUDENT_BOUNDARY]
-RING_CENTER_LAT = sum(_sb_lats) / len(_sb_lats)
-RING_CENTER_LNG = sum(_sb_lngs) / len(_sb_lngs)
+# Center point for the student rental boundary circle (10th St & Woodlawn Ave)
+RING_CENTER_LAT = 39.171661
+RING_CENTER_LNG = -86.523504
 
 
 def _dist_point_to_segment_miles(plat, plng, alat, alng, blat, blng):
@@ -2023,17 +2021,16 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
 
             st.markdown('<div class="fsep"></div>', unsafe_allow_html=True)
             st.markdown('<div class="flbl">Student Rental Radius</div>', unsafe_allow_html=True)
-            _s_radius = st.slider(
+            st.slider(
                 "Miles from campus edge",
                 min_value=0.1, max_value=2.0,
-                value=ss.get("student_radius", 0.5),
                 step=0.05, format="%.2f mi",
                 key="student_radius",
                 label_visibility="collapsed",
             )
             st.markdown(
                 f'<div style="color:#9ca3af;font-size:12px;margin-top:2px;">'
-                f'Units within {_s_radius:.2f} mi of campus edge are classified as student rentals</div>',
+                f'Units within {ss.student_radius:.2f} mi of campus edge are classified as student rentals</div>',
                 unsafe_allow_html=True,
             )
 
