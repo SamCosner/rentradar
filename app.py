@@ -750,9 +750,16 @@ def _init_state():
     for pt in _all_prop_types:
         if f"pt_{pt}" not in ss:
             ss[f"pt_{pt}"] = True
+    if "student_radius" not in ss:
+        ss.student_radius = 0.5
+    if "rental_type_filter" not in ss:
+        ss.rental_type_filter = "All"
 
 
 _init_state()
+
+# is_student_rental recalculated each run using the current radius from session state
+df["is_student_rental"] = df["dist_miles"] <= st.session_state.get("student_radius", 0.5)
 
 
 # ── Active filter count ───────────────────────────────────────────────────────
@@ -766,16 +773,18 @@ def _active_count() -> int:
     lo_a, hi_a = ss.flt_avail_range
     if lo_a != _avail_lo or hi_a != _avail_hi:                                            n += 1
     if {pt for pt in _all_prop_types if ss.get(f"pt_{pt}", True)} != set(_all_prop_types): n += 1
+    if ss.get("rental_type_filter", "All") != "All":                                        n += 1
     return n
 
 
 # ── Reset all filters ─────────────────────────────────────────────────────────
 def _reset_filters():
     ss = st.session_state
-    ss.flt_bedrooms    = set()
-    ss.flt_rent_range  = (_rent_lo, _rent_hi)
-    ss.flt_avail_range = (_avail_lo, _avail_hi)
-    ss.flt_companies = []
+    ss.flt_bedrooms       = set()
+    ss.flt_rent_range     = (_rent_lo, _rent_hi)
+    ss.flt_avail_range    = (_avail_lo, _avail_hi)
+    ss.flt_companies      = []
+    ss.rental_type_filter = "All"
     for pt in _all_prop_types:
         ss[f"pt_{pt}"] = True
 
@@ -810,6 +819,12 @@ def get_filtered_df(source: pd.DataFrame, skip_company: bool = False) -> pd.Data
     sel_pts = {pt for pt in _all_prop_types if ss.get(f"pt_{pt}", True)}
     if 0 < len(sel_pts) < len(_all_prop_types):
         r = r[r["property_type"].isin(sel_pts)]
+
+    rental_type = ss.get("rental_type_filter", "All")
+    if rental_type == "Student Rentals" and "is_student_rental" in r.columns:
+        r = r[r["is_student_rental"] == True]
+    elif rental_type == "Non-Student" and "is_student_rental" in r.columns:
+        r = r[r["is_student_rental"] == False]
 
     return r
 
@@ -899,6 +914,23 @@ def render_filter_bar():
             for c, pt in zip(pt_cols, _all_prop_types):
                 with c:
                     st.checkbox(pt, key=f"pt_{pt}")
+
+            st.markdown('<div class="fsep"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="flbl">Rental Type</div>', unsafe_allow_html=True)
+            _rt_options = ["All", "Student Rentals", "Non-Student"]
+            _rt_current = ss.get("rental_type_filter", "All")
+            _rt_sel_css = "".join(
+                f'button[aria-label="{opt}"]{{background-color:#2563eb!important;'
+                f'border-color:#2563eb!important;color:#ffffff!important;font-weight:600!important;}}'
+                for opt in _rt_options if opt == _rt_current
+            )
+            if _rt_sel_css:
+                st.markdown(f"<style>{_rt_sel_css}</style>", unsafe_allow_html=True)
+            rt_cols = st.columns(len(_rt_options))
+            for _rtc, _opt in zip(rt_cols, _rt_options):
+                with _rtc:
+                    if st.button(_opt, key=f"rt_{_opt}"):
+                        ss.rental_type_filter = _opt
 
         # ── Col 2: Bedrooms + Availability ───────────────────────────────────
         with col2:
@@ -1062,6 +1094,75 @@ IU_CAMPUS_POLYGON = [[
     [-86.514545, 39.189821], [-86.514573, 39.190623],
     [-86.514578, 39.192256], [-86.514628, 39.193551],
 ]]
+
+# West, south, and southeast sides only — excludes north side (hospital, Greek Row, golf course)
+STUDENT_BOUNDARY = [
+    [-86.490585, 39.182238],
+    [-86.490260, 39.176393],
+    [-86.495486, 39.175992],
+    [-86.495368, 39.171468],
+    [-86.500121, 39.171545],
+    [-86.503995, 39.171554],
+    [-86.506417, 39.171731],
+    [-86.507215, 39.171413],
+    [-86.507213, 39.170511],
+    [-86.507187, 39.168894],
+    [-86.509459, 39.167573],
+    [-86.509444, 39.165757],
+    [-86.509412, 39.164271],
+    [-86.510910, 39.164270],
+    [-86.514209, 39.164266],
+    [-86.517429, 39.164284],
+    [-86.521062, 39.164262],
+    [-86.525215, 39.164284],
+    [-86.526910, 39.164314],
+    [-86.526919, 39.165558],
+    [-86.526944, 39.167524],
+    [-86.526959, 39.168509],
+]
+
+# Centroid of STUDENT_BOUNDARY — used as ring center so rings appear to radiate from the edge
+_sb_lats = [p[1] for p in STUDENT_BOUNDARY]
+_sb_lngs = [p[0] for p in STUDENT_BOUNDARY]
+RING_CENTER_LAT = sum(_sb_lats) / len(_sb_lats)
+RING_CENTER_LNG = sum(_sb_lngs) / len(_sb_lngs)
+
+
+def _dist_point_to_segment_miles(plat, plng, alat, alng, blat, blng):
+    scale_lat = 69.0
+    scale_lng = 69.0 * math.cos(math.radians(plat))
+    px = (plng - alng) * scale_lng
+    py = (plat - alat) * scale_lat
+    dx = (blng - alng) * scale_lng
+    dy = (blat - alat) * scale_lat
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq == 0:
+        return math.sqrt(px * px + py * py)
+    t = max(0.0, min(1.0, (px * dx + py * dy) / seg_len_sq))
+    closest_x = t * dx - px
+    closest_y = t * dy - py
+    return math.sqrt(closest_x ** 2 + closest_y ** 2)
+
+
+def dist_to_campus_edge_miles(lat, lng):
+    """Shortest distance in miles from a point to the student-facing campus boundary."""
+    min_dist = float("inf")
+    for i in range(len(STUDENT_BOUNDARY) - 1):
+        alng, alat = STUDENT_BOUNDARY[i]
+        blng, blat = STUDENT_BOUNDARY[i + 1]
+        d = _dist_point_to_segment_miles(lat, lng, alat, alng, blat, blng)
+        if d < min_dist:
+            min_dist = d
+    return min_dist
+
+
+# ── dist_miles pre-computed on the full dataset ───────────────────────────────
+df["dist_miles"] = df.apply(
+    lambda r: dist_to_campus_edge_miles(r["lat"], r["lng"])
+    if pd.notna(r["lat"]) and pd.notna(r["lng"]) and r["lat"] != 0 and r["lng"] != 0
+    else float("nan"),
+    axis=1,
+)
 
 # ── Sidebar navigation ────────────────────────────────────────────────────────
 _NAV_PAGES = [
@@ -1711,13 +1812,6 @@ if _active_page == "Map":
     ]
 
     # ── Helper functions ───────────────────────────────────────────────────────
-    def haversine_miles(lat1, lng1, lat2, lng2):
-        R = 3958.8
-        lat1, lng1, lat2, lng2 = map(math.radians, [lat1, lng1, lat2, lng2])
-        dlat, dlng = lat2 - lat1, lng2 - lng1
-        a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlng / 2) ** 2
-        return R * 2 * math.asin(math.sqrt(a))
-
     def make_circle(center_lat, center_lng, radius_miles, n_points=64):
         lat_deg = radius_miles * 0.01449
         lng_deg = radius_miles * 0.01449 / math.cos(math.radians(center_lat))
@@ -1766,10 +1860,11 @@ if _active_page == "Map":
             if r_max > r_min else 1.0
         )
 
-        # Distance from campus
-        map_df["dist_miles"] = map_df.apply(
-            lambda r: haversine_miles(r["lat"], r["lng"], CAMPUS_LAT, CAMPUS_LNG),
-            axis=1,
+        # dist_miles is pre-computed on df and carried through active_df → map_df
+        # Refresh is_student_rental on map_df using the current slider value
+        map_df["is_student_rental"] = map_df["dist_miles"] <= ss.get("student_radius", 0.5)
+        map_df["rental_type_label"] = map_df["is_student_rental"].map(
+            {True: "Student Rental", False: "Non-Student"}
         )
 
         # ── Weekly activity (full unfiltered dataset) ─────────────────────────
@@ -1809,7 +1904,7 @@ if _active_page == "Map":
             return m if pd.notna(m) else None
 
         rings_data = [
-            {"path": make_circle(CAMPUS_LAT, CAMPUS_LNG, r), "label": lbl}
+            {"path": make_circle(RING_CENTER_LAT, RING_CENTER_LNG, r), "label": lbl}
             for r, lbl in _RING_SPECS
         ]
         ring_labels_data = []
@@ -1819,7 +1914,7 @@ if _active_page == "Map":
             lat_deg = r * 0.01449
             label_str = f"{lbl}  |  ${avg:,.0f}/bd" if avg is not None else lbl
             ring_labels_data.append({
-                "position": [CAMPUS_LNG, CAMPUS_LAT + lat_deg],
+                "position": [RING_CENTER_LNG, RING_CENTER_LAT + lat_deg],
                 "label":    label_str,
             })
 
@@ -1950,6 +2045,22 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
                 st.checkbox("Show campus distance rings", key="map_show_rings")
                 st.checkbox("Show IU campus boundary",   key="map_show_campus")
 
+            st.markdown('<div class="fsep"></div>', unsafe_allow_html=True)
+            st.markdown('<div class="flbl">Student Rental Radius</div>', unsafe_allow_html=True)
+            _s_radius = st.slider(
+                "Miles from campus edge",
+                min_value=0.1, max_value=2.0,
+                value=ss.get("student_radius", 0.5),
+                step=0.05, format="%.2f mi",
+                key="student_radius",
+                label_visibility="collapsed",
+            )
+            st.markdown(
+                f'<div style="color:#9ca3af;font-size:12px;margin-top:2px;">'
+                f'Units within {_s_radius:.2f} mi of campus edge are classified as student rentals</div>',
+                unsafe_allow_html=True,
+            )
+
         # ── Build PyDeck deck ─────────────────────────────────────────────────
         view    = pdk.ViewState(latitude=39.165, longitude=-86.526, zoom=12, pitch=45)
         tooltip = {
@@ -1961,7 +2072,8 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
                 "<span style='color:#9ca3af;'>Company</span>&nbsp;{company}<br/>"
                 "<span style='color:#9ca3af;'>Available</span>&nbsp;{available}<br/>"
                 "<span style='color:#9ca3af;'>Days listed</span>&nbsp;{dom_label}<br/>"
-                "<span style='color:#9ca3af;'>Status</span>&nbsp;{status_label}"
+                "<span style='color:#9ca3af;'>Status</span>&nbsp;{status_label}<br/>"
+                "<span style='color:#9ca3af;'>Type</span>&nbsp;{rental_type_label}"
                 "</div>"
             ),
             "style": {
@@ -2068,7 +2180,8 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
         _DIST_BINS   = [0, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 99]
-        _DIST_LABELS = ["0-¼ mi", "¼-½ mi", "½-1 mi", "1-1.5 mi", "1.5-2 mi", "2-3 mi", "3+ mi"]
+        _DIST_LABELS = ["On edge (0-¼ mi)", "Near edge (¼-½ mi)", "Close (½-1 mi)",
+                        "Mid (1-1.5 mi)", "Far (1.5-2 mi)", "Outer (2-3 mi)", "Distant (3+ mi)"]
 
         dist_df = map_df.dropna(subset=["dist_miles", "rent_int", "bedrooms"]).copy()
         dist_df["bedrooms"] = dist_df["bedrooms"].astype(int).astype(str)
@@ -2099,7 +2212,7 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
                 ],
             )
             dist_chart.update_layout(
-                **_chart_layout("Average Rent by Distance from IU Campus"),
+                **_chart_layout("Average Rent by Distance from Campus Edge"),
                 showlegend=True,
             )
             dist_chart.add_shape(
@@ -2122,7 +2235,7 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
                 diff      = near_avg - far_avg
                 direction = "more" if diff > 0 else "less"
                 insight   = (
-                    f"Units within ½ mile of campus average "
+                    f"Units within ½ mile of the student-facing campus edge average "
                     f"<b>${abs(diff):,.0f} {direction}</b> per month "
                     f"than units beyond 1 mile."
                 )
