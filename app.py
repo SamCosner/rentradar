@@ -1803,7 +1803,6 @@ if _active_page == "Map":
     # ── Constants ─────────────────────────────────────────────────────────────
     # CAMPUS_LAT, CAMPUS_LNG, IU_CAMPUS_POLYGON defined at module level above
     _LAYER_OPTIONS = ["Scatter", "Heatmap", "Hexagon"]
-    _RING_SPECS    = [(0.25, "1/4 mi"), (0.5, "1/2 mi"), (1.0, "1 mi"), (2.0, "2 mi")]
     _MAP_STYLE     = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
     _HEX_COLOR_RANGE = [
         [59,  130, 246, 200], [16, 185, 129, 200],
@@ -1890,32 +1889,30 @@ if _active_page == "Map":
         n_new    = len(new_week_df)
         n_leased = len(leased_week_df)
 
-        # ── Ring geometry ─────────────────────────────────────────────────────
-        _band_bounds = {0.25: (0, 0.25), 0.5: (0.25, 0.5), 1.0: (0.5, 1.0), 2.0: (1.0, 2.0)}
-
-        def _band_avg_per_bed(lo, hi):
-            sub = map_df[(map_df["dist_miles"] >= lo) & (map_df["dist_miles"] < hi)].copy()
-            sub = sub.dropna(subset=["rent_int", "bedrooms"])
-            sub = sub[sub["bedrooms"] > 0]
-            if sub.empty:
-                return None
-            m = (sub["rent_int"] / sub["bedrooms"]).mean()
-            return m if pd.notna(m) else None
-
-        rings_data = [
-            {"path": make_circle(RING_CENTER_LAT, RING_CENTER_LNG, r), "label": lbl}
-            for r, lbl in _RING_SPECS
-        ]
-        ring_labels_data = []
-        for r, lbl in _RING_SPECS:
-            lo, hi = _band_bounds[r]
-            avg    = _band_avg_per_bed(lo, hi)
-            lat_deg = r * 0.01449
-            label_str = f"{lbl}  |  ${avg:,.0f}/bd" if avg is not None else lbl
-            ring_labels_data.append({
-                "position": [RING_CENTER_LNG, RING_CENTER_LAT + lat_deg],
-                "label":    label_str,
-            })
+        # ── Student rental boundary circle ────────────────────────────────────
+        _cur_radius = ss.get("student_radius", 0.5)
+        _boundary_circle = make_circle(RING_CENTER_LAT, RING_CENTER_LNG, _cur_radius)
+        _boundary_label_lat = RING_CENTER_LAT + _cur_radius * 0.01449
+        student_boundary_layer = pdk.Layer(
+            "PathLayer",
+            data=[{"path": _boundary_circle}],
+            get_path="path",
+            get_color=[37, 99, 235, 200],
+            get_width=3,
+            width_min_pixels=2,
+            pickable=False,
+        )
+        student_boundary_label_layer = pdk.Layer(
+            "TextLayer",
+            data=[{"position": [RING_CENTER_LNG, _boundary_label_lat],
+                   "label": f"Student rental boundary ({_cur_radius:.2f} mi)"}],
+            get_position="position",
+            get_text="label",
+            get_size=12,
+            get_color=[37, 99, 235, 220],
+            get_text_anchor="'middle'",
+            get_alignment_baseline="'bottom'",
+        )
 
         # ── Static PyDeck layer objects ───────────────────────────────────────
         campus_layer = pdk.Layer(
@@ -1935,26 +1932,6 @@ if _active_page == "Map":
             get_size=14,
             get_color=[165, 30, 55, 220],
             get_alignment_baseline="'center'",
-        )
-        rings_layer = pdk.Layer(
-            "PathLayer",
-            data=rings_data,
-            get_path="path",
-            get_color=[165, 30, 55, 100],
-            get_width=2,
-            width_min_pixels=1,
-            pickable=False,
-            dash_array=[6, 4],
-        )
-        ring_labels_layer = pdk.Layer(
-            "TextLayer",
-            data=ring_labels_data,
-            get_position="position",
-            get_text="label",
-            get_size=12,
-            get_color=[120, 20, 40, 220],
-            get_text_anchor="'middle'",
-            get_alignment_baseline="'bottom'",
         )
 
         # ── CSS: base styles for weekly pills + selected overrides ────────────
@@ -2041,8 +2018,8 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
   <span class="leg-item"><span class="leg-dot" style="background:rgb(150,150,150);"></span>Unknown</span>
 </div>""", unsafe_allow_html=True)
             with disp_chk:
-                st.checkbox("Show campus distance rings", key="map_show_rings")
-                st.checkbox("Show IU campus boundary",   key="map_show_campus")
+                st.checkbox("Show student rental boundary", key="map_show_rings")
+                st.checkbox("Show IU campus boundary",      key="map_show_campus")
 
             st.markdown('<div class="fsep"></div>', unsafe_allow_html=True)
             st.markdown('<div class="flbl">Student Rental Radius</div>', unsafe_allow_html=True)
@@ -2087,7 +2064,7 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
         if ss.map_show_campus:
             active_layers.append(campus_layer)
         if ss.map_show_rings:
-            active_layers.append(rings_layer)
+            active_layers.append(student_boundary_layer)
 
         if ss.map_layer == "Scatter":
             active_layers.append(pdk.Layer(
@@ -2131,7 +2108,7 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
 
         # Text labels on top
         if ss.map_show_rings:
-            active_layers.append(ring_labels_layer)
+            active_layers.append(student_boundary_label_layer)
         if ss.map_show_campus:
             active_layers.append(text_layer)
 
