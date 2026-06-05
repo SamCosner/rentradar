@@ -1150,15 +1150,18 @@ def compute_kpi_history(_df):
 @st.cache_data
 def compute_mpi_history(_df):
     """For each scrape date, recompute the Market Pressure Index using the same three-signal formula."""
-    dates = sorted(_df["scraped_date"].dropna().unique())
+    dates      = sorted(_df["scraped_date"].dropna().unique())
+    first_seen = _df.groupby("url")["scraped_date"].min()  # compute once for the whole dataset
     rows = []
     for d in dates:
         week_ago  = d - pd.Timedelta(days=7)
         month_ago = d - pd.Timedelta(days=30)
 
+        # Unique new: listings whose first ever appearance falls in [week_ago, d]
+        n_new  = int(((first_seen >= week_ago) & (first_seen <= d)).sum())
+        # Unique removed: distinct URLs with event="removed" in [week_ago, d]
         recent = _df[(_df["scraped_date"] >= week_ago) & (_df["scraped_date"] <= d)]
-        n_new  = int((recent["event"] == "new").sum())
-        n_rem  = int((recent["event"] == "removed").sum())
+        n_rem  = int(recent[recent["event"] == "removed"]["url"].nunique())
         absorb = n_rem / max(1, n_new + n_rem)
 
         df_d   = _df[_df["scraped_date"] <= d]
@@ -1372,11 +1375,14 @@ if _active_page == "Overview":
     _mpi_week_ago  = _mpi_today - pd.Timedelta(days=7)
     _mpi_month_ago = _mpi_today - pd.Timedelta(days=30)
 
-    # Signal 1: absorption — what fraction of last-7d events were removals (leased/gone)
-    _mpi_recent = filtered[filtered["scraped_date"] >= _mpi_week_ago]
-    _mpi_n_new  = int((_mpi_recent["event"] == "new").sum())
-    _mpi_n_rem  = int((_mpi_recent["event"] == "removed").sum())
-    _mpi_absorb = _mpi_n_rem / max(1, _mpi_n_new + _mpi_n_rem)
+    # Signal 1: absorption — unique new listings vs unique removals in last 7 days.
+    # Use first-ever appearance per URL for "new" to avoid counting daily re-scrapes of
+    # the same listing as multiple new events.
+    _mpi_first_seen = filtered.groupby("url")["scraped_date"].min()
+    _mpi_n_new      = int((_mpi_first_seen >= _mpi_week_ago).sum())
+    _mpi_recent     = filtered[filtered["scraped_date"] >= _mpi_week_ago]
+    _mpi_n_rem      = int(_mpi_recent[_mpi_recent["event"] == "removed"]["url"].nunique())
+    _mpi_absorb     = _mpi_n_rem / max(1, _mpi_n_new + _mpi_n_rem)
 
     # Signals 2 & 3: compare current active snapshot to 30 days ago
     _mpi_n_active  = len(active_df)
