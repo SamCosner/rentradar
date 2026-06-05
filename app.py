@@ -1310,30 +1310,64 @@ if _active_page == "Overview":
 
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
-    # Clean data for rent chart — same three filters as Pricing Intelligence
-    _ov = latest_df[latest_df["rent"].between(400, 12_000)].copy()
-    _ov_avail   = pd.to_datetime(_ov["available"], errors="coerce")
-    _ov_med     = _ov.groupby("bedrooms")["rent"].median()
-    _ov_thresh  = _ov["bedrooms"].map(_ov_med) * 0.6
-    _ov_soon    = _ov_avail < (pd.Timestamp.now().normalize() + pd.Timedelta(days=60))
-    _ov         = _ov[~(_ov_soon & (_ov["rent"] < _ov_thresh))]
-    _ov_counts  = _ov["bedrooms"].value_counts()
-    _ov_clean   = _ov[_ov["bedrooms"].isin(_ov_counts[_ov_counts >= 5].index)]
+    # ── Market Pressure Index (MPI) ──────────────────────────────────────────
+    # Composite 0–100 score: 0 = renters' market, 100 = landlords' market.
+    # Three signals: 7-day absorption, 30-day inventory change, 30-day rent trend.
+    _mpi_today     = filtered["scraped_date"].max()
+    _mpi_week_ago  = _mpi_today - pd.Timedelta(days=7)
+    _mpi_month_ago = _mpi_today - pd.Timedelta(days=30)
 
-    avg_rent = _ov_clean.groupby("bedrooms")["rent"].mean().reset_index()
-    fig1 = px.bar(
-        avg_rent, x="bedrooms", y="rent",
-        labels={"bedrooms": "Bedrooms", "rent": "Avg rent ($)"},
-        color_discrete_sequence=["#2563eb"],
-        text=avg_rent["rent"].apply(lambda v: f"${v:,.0f}"),
-    )
-    fig1.update_traces(textposition="outside", textfont=dict(size=11, color="#374151"))
-    fig1.update_layout(**_chart_layout("Average Rent by Bedroom Count"), showlegend=False)
+    # Signal 1: absorption — what fraction of last-7d events were removals (leased/gone)
+    _mpi_recent = filtered[filtered["scraped_date"] >= _mpi_week_ago]
+    _mpi_n_new  = int((_mpi_recent["event"] == "new").sum())
+    _mpi_n_rem  = int((_mpi_recent["event"] == "removed").sum())
+    _mpi_absorb = _mpi_n_rem / max(1, _mpi_n_new + _mpi_n_rem)
 
+    # Signals 2 & 3: compare current active snapshot to 30 days ago
+    _mpi_n_active  = len(active_df)
+    _mpi_inv_chg   = 0.0
+    _mpi_inv       = 0.5
+    _mpi_rent_chg  = 0.0
+    _mpi_rent      = 0.5
+
+    _mpi_df_prev = filtered[filtered["scraped_date"] <= _mpi_month_ago]
+    if not _mpi_df_prev.empty:
+        _mpi_ul_prev = _mpi_df_prev.sort_values("scraped_date").groupby("url").last().reset_index()
+        _mpi_aprev   = _mpi_ul_prev[_mpi_ul_prev["event"] != "removed"]
+        _mpi_n_prev  = len(_mpi_aprev)
+        if _mpi_n_prev > 0:
+            _mpi_inv_chg = (_mpi_n_active - _mpi_n_prev) / _mpi_n_prev
+            # Shrinking inventory → higher score (landlord pressure)
+            _mpi_inv = 0.5 - min(0.5, max(-0.5, _mpi_inv_chg))
+        _mpi_med_now  = active_df["rent"].median() if not active_df.empty else None
+        _mpi_med_prev = _mpi_aprev["rent"].median() if not _mpi_aprev.empty else None
+        if _mpi_med_now and _mpi_med_prev and _mpi_med_prev > 0:
+            _mpi_rent_chg = (_mpi_med_now - _mpi_med_prev) / _mpi_med_prev
+            # Rising rents → higher score; amplify small % changes
+            _mpi_rent = 0.5 + min(0.5, max(-0.5, _mpi_rent_chg * 10))
+
+    _mpi = min(100.0, max(0.0,
+        (_mpi_absorb * 0.40 + _mpi_inv * 0.35 + _mpi_rent * 0.25) * 100
+    ))
+    _mpi_dot = min(95.0, max(5.0, _mpi))  # clamp for CSS marker positioning
+
+    if _mpi < 35:
+        _mpi_label, _mpi_color, _mpi_bg = "Renters' Market", "#16A34A", "#F0FDF4"
+    elif _mpi < 65:
+        _mpi_label, _mpi_color, _mpi_bg = "Balanced Market",  "#D97706", "#FFFBEB"
+    else:
+        _mpi_label, _mpi_color, _mpi_bg = "Landlords' Market", "#DC2626", "#FEF2F2"
+
+    _mpi_inv_color  = "#DC2626" if _mpi_inv_chg  < -0.02 else "#16A34A" if _mpi_inv_chg  > 0.02 else "#6B7280"
+    _mpi_rent_color = "#DC2626" if _mpi_rent_chg >  0.01 else "#16A34A" if _mpi_rent_chg < -0.01 else "#6B7280"
+    _mpi_abs_total  = _mpi_n_new + _mpi_n_rem
+
+    # ── Active Listings by Company chart ──────────────────────────────────────
     company_counts = (
         active_df.groupby("company").size()
         .reset_index(name="listings").sort_values("listings")
     )
+    _co_height = max(300, min(520, 100 + len(company_counts) * 28))
     fig2 = px.bar(
         company_counts, x="listings", y="company", orientation="h",
         labels={"listings": "Listings", "company": ""},
@@ -1341,13 +1375,55 @@ if _active_page == "Overview":
         text="listings",
     )
     fig2.update_traces(textposition="outside", textfont=dict(size=11, color="#374151"))
-    fig2.update_layout(**_chart_layout("Active Listings by Company"))
+    fig2.update_layout(**_chart_layout("Active Listings by Company", height=_co_height))
 
-    chart_col1, chart_col2 = st.columns(2)
+    chart_col1, chart_col2 = st.columns([1, 2])
     with chart_col1:
-        st.plotly_chart(fig1)
+        _mpi_card = f"""
+<div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;
+  padding:1.25rem 1.5rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+  <div style="color:#6B7280;font-size:11px;font-weight:600;text-transform:uppercase;
+    letter-spacing:0.08em;margin-bottom:0.8rem;">Market Conditions</div>
+  <div style="background:{_mpi_bg};border-radius:8px;padding:0.85rem 1rem;margin-bottom:1rem;">
+    <div style="color:{_mpi_color};font-size:22px;font-weight:700;line-height:1.2;
+      margin-bottom:3px;">{_mpi_label}</div>
+    <div style="color:#6B7280;font-size:12px;">Pressure index&nbsp;
+      <strong style="color:#111827;">{_mpi:.0f} / 100</strong></div>
+  </div>
+  <div style="margin-bottom:0.9rem;">
+    <div style="position:relative;height:10px;border-radius:5px;
+      background:linear-gradient(to right,#16A34A,#D97706,#DC2626);margin-bottom:8px;">
+      <div style="position:absolute;top:50%;left:{_mpi_dot:.1f}%;
+        transform:translate(-50%,-50%);width:16px;height:16px;
+        background:#111827;border-radius:50%;border:2.5px solid #FFF;
+        box-shadow:0 1px 4px rgba(0,0,0,0.35);"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:10px;color:#9CA3AF;">
+      <span>Renters</span><span>Balanced</span><span>Landlords</span>
+    </div>
+  </div>
+  <div style="border-top:1px solid #F3F4F6;padding-top:0.75rem;">
+    <div style="color:#9CA3AF;font-size:10px;font-weight:600;text-transform:uppercase;
+      letter-spacing:0.06em;margin-bottom:0.5rem;">Signal Breakdown</div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;
+      padding:5px 0;border-bottom:1px solid #F9FAFB;">
+      <span style="color:#6B7280;">7d absorption</span>
+      <span style="color:#111827;font-weight:500;">{_mpi_n_rem} of {_mpi_abs_total} leased</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;
+      padding:5px 0;border-bottom:1px solid #F9FAFB;">
+      <span style="color:#6B7280;">30d inventory</span>
+      <span style="color:{_mpi_inv_color};font-weight:500;">{_mpi_inv_chg:+.1%}</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;">
+      <span style="color:#6B7280;">30d rent trend</span>
+      <span style="color:{_mpi_rent_color};font-weight:500;">{_mpi_rent_chg:+.1%}</span>
+    </div>
+  </div>
+</div>"""
+        st.markdown(_mpi_card, unsafe_allow_html=True)
     with chart_col2:
-        st.plotly_chart(fig2)
+        st.plotly_chart(fig2, use_container_width=True)
 
     # ── Recent Activity ───────────────────────────────────────────────────────
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
