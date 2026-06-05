@@ -106,41 +106,56 @@ section[data-testid="stSidebar"],
     width: 220px !important;
     min-width: 220px !important;
     padding: 1.25rem 0.75rem 1.5rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    box-sizing: border-box !important;
+}
+/* Spacer div pushes footer to bottom */
+[data-testid="stSidebar"] div:has(> .sidebar-spacer) {
+    flex: 1 !important;
+    min-height: 1px !important;
 }
 
 /* ── Sidebar nav buttons ── */
 [data-testid="stSidebar"] .stButton { margin-bottom: 0 !important; }
 [data-testid="stSidebar"] .stButton button {
     background: transparent !important;
-    border-top: none !important;
-    border-right: none !important;
-    border-radius: 0 !important;
+    border: none !important;
     border-left: 3px solid transparent !important;
-    border-bottom: 1px solid #E5E7EB !important;
-    color: #6B7280 !important;
-    font-size: 13px !important;
+    border-radius: 6px !important;
+    color: #9CA3AF !important;
+    font-size: 12.5px !important;
     font-weight: 500 !important;
-    text-align: left !important;
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
     gap: 10px !important;
-    padding: 10px 14px 10px 10px !important;
+    padding: 9px 10px 9px 10px !important;
     width: 100% !important;
-    min-height: 42px !important;
+    min-height: 38px !important;
     height: auto !important;
     box-shadow: none !important;
-    transition: background-color 0.12s, color 0.12s, border-left-color 0.12s !important;
+    transition: background-color 0.15s, color 0.15s, border-left-color 0.15s !important;
+    margin-bottom: 2px !important;
 }
 [data-testid="stSidebar"] .stButton button:hover {
-    background: #EFF6FF !important;
-    color: #1D4ED8 !important;
-    border-left-color: #93C5FD !important;
+    background: #F5F7FF !important;
+    color: #374151 !important;
+    border-left-color: #C7D2FE !important;
 }
-/* Button text alignment */
-[data-testid="stSidebar"] .stButton button p,
-[data-testid="stSidebar"] .stButton button div {
-    text-align: left !important;
+/* Text: fills remaining space, right-aligned */
+[data-testid="stSidebar"] .stButton button p {
+    flex: 1 !important;
+    text-align: right !important;
+    color: inherit !important;
+    line-height: 1 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+[data-testid="stSidebar"] .stButton button > div {
+    flex: 1 !important;
+    text-align: right !important;
     color: inherit !important;
     line-height: 1 !important;
     margin: 0 !important;
@@ -156,11 +171,13 @@ section[data-testid="stSidebar"],
     background-size: contain !important;
     background-repeat: no-repeat !important;
     background-position: center !important;
-    opacity: 0.65 !important;
+    opacity: 0.5 !important;
+    transition: opacity 0.15s !important;
 }
-/* Overview — bar chart */
+[data-testid="stSidebar"] .stButton button:hover::before { opacity: 0.8 !important; }
+/* Overview — grid / dashboard */
 [data-testid="stSidebar"] button[aria-label="Overview"]::before {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='20' x2='18' y2='10'/%3E%3Cline x1='12' y1='20' x2='12' y2='4'/%3E%3Cline x1='6' y1='20' x2='6' y2='14'/%3E%3C/svg%3E") !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='7' rx='1'/%3E%3Crect x='14' y='3' width='7' height='7' rx='1'/%3E%3Crect x='3' y='14' width='7' height='7' rx='1'/%3E%3Crect x='14' y='14' width='7' height='7' rx='1'/%3E%3C/svg%3E") !important;
 }
 /* Pricing Intelligence — dollar sign */
 [data-testid="stSidebar"] button[aria-label="Pricing Intelligence"]::before {
@@ -178,9 +195,9 @@ section[data-testid="stSidebar"],
 [data-testid="stSidebar"] button[aria-label="Companies"]::before {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z'/%3E%3Cpath d='M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2'/%3E%3Cpath d='M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2'/%3E%3Cpath d='M10 6h4'/%3E%3Cpath d='M10 10h4'/%3E%3Cpath d='M10 14h4'/%3E%3Cpath d='M10 18h4'/%3E%3C/svg%3E") !important;
 }
-/* AI Export — sparkle */
+/* AI Export — sparkles */
 [data-testid="stSidebar"] button[aria-label="AI Export"]::before {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3L13.5 8.5L19 10L13.5 11.5L12 17L10.5 11.5L5 10L10.5 8.5Z'/%3E%3Cpath d='M19 3L19.75 5.25L22 6L19.75 6.75L19 9L18.25 6.75L16 6L18.25 5.25Z'/%3E%3Cpath d='M5 17L5.5 18.5L7 19L5.5 19.5L5 21L4.5 19.5L3 19L4.5 18.5Z'/%3E%3C/svg%3E") !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z'/%3E%3C/svg%3E") !important;
 }
 
 /* ═══════════════════════════════════════════════
@@ -1224,18 +1241,19 @@ _active_page = st.session_state.active_page
 _nav_label_esc = _active_page.replace('"', '\\"')
 st.sidebar.markdown(
     f'<style>[data-testid="stSidebar"] button[aria-label="{_nav_label_esc}"]'
-    f'{{background:#EFF6FF!important;color:#2563EB!important;'
-    f'border-left-color:#2563EB!important;font-weight:600!important;}}</style>',
+    f'{{background:#EEF2FF!important;color:#2563EB!important;'
+    f'border-left-color:#2563EB!important;font-weight:600!important;}}'
+    f'[data-testid="stSidebar"] button[aria-label="{_nav_label_esc}"]::before'
+    f'{{opacity:0.9!important;}}</style>',
     unsafe_allow_html=True,
 )
 
 with st.sidebar:
     st.markdown(
-        '<div style="font-size:18px;font-weight:700;color:#111827;padding:4px 4px 0;">RentRadar</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div style="height:1px;background:#E5E7EB;margin:14px -1rem 6px;"></div>',
+        '<div style="padding:2px 6px 16px;">'
+        '<div style="font-size:15px;font-weight:700;color:#111827;letter-spacing:-0.3px;">RentRadar</div>'
+        '<div style="font-size:10px;color:#9CA3AF;margin-top:3px;letter-spacing:0.02em;">Bloomington Rental Market</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
     for _pg in _NAV_PAGES:
@@ -1244,15 +1262,13 @@ with st.sidebar:
             on_click=_set_page, args=(_pg,),
             use_container_width=True,
         )
+    st.markdown('<div class="sidebar-spacer" style="flex:1;min-height:1px;"></div>', unsafe_allow_html=True)
     st.markdown(
-        '<div style="height:1px;background:#E5E7EB;margin:10px -1rem 12px;"></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div style="color:#9CA3AF;font-size:11px;line-height:1.8;padding:0 4px;">'
-        f'<span style="color:#6B7280;font-weight:600;">Bloomington, IN</span><br>'
+        f'<div style="border-top:1px solid #F3F4F6;padding:12px 6px 0;">'
+        f'<div style="color:#374151;font-size:11px;font-weight:600;margin-bottom:3px;">Bloomington, IN</div>'
+        f'<div style="color:#9CA3AF;font-size:11px;">'
         f'Last scrape: {latest_date.strftime("%b")} {latest_date.day}, {latest_date.strftime("%Y")}'
-        f'</div>',
+        f'</div></div>',
         unsafe_allow_html=True,
     )
 
