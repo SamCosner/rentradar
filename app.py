@@ -1433,14 +1433,17 @@ if _active_page == "Overview":
             fill="tozeroy", fillcolor="rgba(37,99,235,0.06)",
         ))
     fig_mpi_hist.update_layout(
-        **_chart_layout("Pressure Index History", height=_mpi_hist_height),
-        showlegend=False,
-        yaxis=dict(range=[0, 100], tickvals=[0, 35, 65, 100],
-                   gridcolor="#f3f4f6", linecolor="#e5e7eb", zeroline=False,
-                   tickfont=dict(color="#6b7280", size=10)),
-        xaxis=dict(gridcolor="#f3f4f6", linecolor="#e5e7eb",
-                   tickfont=dict(color="#6b7280", size=10)),
-        margin=dict(l=8, r=8, t=34, b=8),
+        **_chart_layout(
+            "Pressure Index History",
+            height=_mpi_hist_height,
+            showlegend=False,
+            yaxis=dict(range=[0, 100], tickvals=[0, 35, 65, 100],
+                       gridcolor="#f3f4f6", linecolor="#e5e7eb", zeroline=False,
+                       tickfont=dict(color="#6b7280", size=10)),
+            xaxis=dict(gridcolor="#f3f4f6", linecolor="#e5e7eb",
+                       tickfont=dict(color="#6b7280", size=10)),
+            margin=dict(l=8, r=8, t=34, b=8),
+        )
     )
 
     chart_col1, chart_col2 = st.columns([1, 2])
