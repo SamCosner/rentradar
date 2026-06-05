@@ -1130,6 +1130,45 @@ def compute_kpi_history(_df):
     return pd.DataFrame(rows)
 
 
+@st.cache_data
+def compute_mpi_history(_df):
+    """For each scrape date, recompute the Market Pressure Index using the same three-signal formula."""
+    dates = sorted(_df["scraped_date"].dropna().unique())
+    rows = []
+    for d in dates:
+        week_ago  = d - pd.Timedelta(days=7)
+        month_ago = d - pd.Timedelta(days=30)
+
+        recent = _df[(_df["scraped_date"] >= week_ago) & (_df["scraped_date"] <= d)]
+        n_new  = int((recent["event"] == "new").sum())
+        n_rem  = int((recent["event"] == "removed").sum())
+        absorb = n_rem / max(1, n_new + n_rem)
+
+        df_d   = _df[_df["scraped_date"] <= d]
+        ul_d   = df_d.sort_values("scraped_date").groupby("url").last().reset_index()
+        active = ul_d[ul_d["event"] != "removed"]
+        n_act  = len(active)
+        inv, rent = 0.5, 0.5
+
+        df_prev = _df[_df["scraped_date"] <= month_ago]
+        if not df_prev.empty:
+            ul_prev     = df_prev.sort_values("scraped_date").groupby("url").last().reset_index()
+            active_prev = ul_prev[ul_prev["event"] != "removed"]
+            n_prev      = len(active_prev)
+            if n_prev > 0:
+                inv_chg = (n_act - n_prev) / n_prev
+                inv     = 0.5 - min(0.5, max(-0.5, inv_chg))
+            med_now  = active["rent"].median()      if not active.empty      else None
+            med_prev = active_prev["rent"].median() if not active_prev.empty else None
+            if med_now and med_prev and med_prev > 0:
+                rent_chg = (med_now - med_prev) / med_prev
+                rent     = 0.5 + min(0.5, max(-0.5, rent_chg * 10))
+
+        mpi = min(100.0, max(0.0, (absorb * 0.40 + inv * 0.35 + rent * 0.25) * 100))
+        rows.append({"date": pd.Timestamp(d), "mpi": mpi})
+    return pd.DataFrame(rows)
+
+
 # ── Campus constants (shared by Map and Companies tabs) ───────────────────────
 CAMPUS_LAT = 39.171661
 CAMPUS_LNG = -86.523504
@@ -1367,7 +1406,9 @@ if _active_page == "Overview":
         active_df.groupby("company").size()
         .reset_index(name="listings").sort_values("listings")
     )
-    _co_height = max(300, min(520, 100 + len(company_counts) * 28))
+    _mpi_card_height = 268
+    _co_height       = max(460, min(600, 120 + len(company_counts) * 28))
+    _mpi_hist_height = _co_height - _mpi_card_height - 18
     fig2 = px.bar(
         company_counts, x="listings", y="company", orientation="h",
         labels={"listings": "Listings", "company": ""},
@@ -1377,10 +1418,36 @@ if _active_page == "Overview":
     fig2.update_traces(textposition="outside", textfont=dict(size=11, color="#374151"))
     fig2.update_layout(**_chart_layout("Active Listings by Company", height=_co_height))
 
+    # MPI history chart (stacked below the card in the left column)
+    _mpi_hist_df = compute_mpi_history(filtered)
+    fig_mpi_hist = go.Figure()
+    fig_mpi_hist.add_hrect(y0=0,  y1=35,  fillcolor="#16A34A", opacity=0.07, line_width=0)
+    fig_mpi_hist.add_hrect(y0=35, y1=65,  fillcolor="#D97706", opacity=0.07, line_width=0)
+    fig_mpi_hist.add_hrect(y0=65, y1=100, fillcolor="#DC2626", opacity=0.07, line_width=0)
+    fig_mpi_hist.add_hline(y=35, line_dash="dot", line_color="#D1D5DB", line_width=1)
+    fig_mpi_hist.add_hline(y=65, line_dash="dot", line_color="#D1D5DB", line_width=1)
+    if not _mpi_hist_df.empty:
+        fig_mpi_hist.add_trace(go.Scatter(
+            x=_mpi_hist_df["date"], y=_mpi_hist_df["mpi"],
+            mode="lines", line=dict(color="#2563EB", width=2),
+            fill="tozeroy", fillcolor="rgba(37,99,235,0.06)",
+        ))
+    fig_mpi_hist.update_layout(
+        **_chart_layout("Pressure Index History", height=_mpi_hist_height),
+        showlegend=False,
+        yaxis=dict(range=[0, 100], tickvals=[0, 35, 65, 100],
+                   gridcolor="#f3f4f6", linecolor="#e5e7eb", zeroline=False,
+                   tickfont=dict(color="#6b7280", size=10)),
+        xaxis=dict(gridcolor="#f3f4f6", linecolor="#e5e7eb",
+                   tickfont=dict(color="#6b7280", size=10)),
+        margin=dict(l=8, r=8, t=34, b=8),
+    )
+
     chart_col1, chart_col2 = st.columns([1, 2])
     with chart_col1:
         _mpi_card = f"""
 <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;
+  height:{_mpi_card_height}px;overflow:hidden;
   padding:1.25rem 1.5rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
   <div style="color:#6B7280;font-size:11px;font-weight:600;text-transform:uppercase;
     letter-spacing:0.08em;margin-bottom:0.8rem;">Market Conditions</div>
@@ -1422,6 +1489,7 @@ if _active_page == "Overview":
   </div>
 </div>"""
         st.markdown(_mpi_card, unsafe_allow_html=True)
+        st.plotly_chart(fig_mpi_hist, use_container_width=True)
     with chart_col2:
         st.plotly_chart(fig2, use_container_width=True)
 
