@@ -1406,8 +1406,8 @@ if _active_page == "Overview":
         active_df.groupby("company").size()
         .reset_index(name="listings").sort_values("listings")
     )
-    _mpi_card_height = 268
-    _co_height       = max(460, min(600, 120 + len(company_counts) * 28))
+    _mpi_card_height = 300  # estimated natural render height — used only for hist chart sizing
+    _co_height       = max(500, min(640, 120 + len(company_counts) * 28))
     _mpi_hist_height = _co_height - _mpi_card_height - 18
     fig2 = px.bar(
         company_counts, x="listings", y="company", orientation="h",
@@ -1450,7 +1450,6 @@ if _active_page == "Overview":
     with chart_col1:
         _mpi_card = f"""
 <div style="background:#FFFFFF;border:1px solid #E5E7EB;border-radius:12px;
-  height:{_mpi_card_height}px;overflow:hidden;
   padding:1.25rem 1.5rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
   <div style="color:#6B7280;font-size:11px;font-weight:600;text-transform:uppercase;
     letter-spacing:0.08em;margin-bottom:0.8rem;">Market Conditions</div>
