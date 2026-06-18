@@ -1080,7 +1080,8 @@ def _kpi_delta(diff: float, unit: str, invert: bool = False):
 
 
 def render_kpi_row(latest_df: pd.DataFrame, prev_df: pd.DataFrame,
-                   active_df: pd.DataFrame = None, prev_active_df: pd.DataFrame = None):
+                   active_df: pd.DataFrame = None, prev_active_df: pd.DataFrame = None,
+                   *, df_full: pd.DataFrame = None):
     _active  = active_df      if active_df      is not None else latest_df
     _pactive = prev_active_df if prev_active_df is not None else prev_df
 
@@ -1110,11 +1111,19 @@ def render_kpi_row(latest_df: pd.DataFrame, prev_df: pd.DataFrame,
     else:
         rpb_delta, rpb_dc = "—", "neutral"
 
+    if df_full is not None and cur_listings > 0:
+        _fs = df_full[df_full["event"] == "new"].groupby("url")["scraped_date"].min().rename("first_seen")
+        _dom_days = _active.join(_fs, on="url", how="left")["first_seen"]
+        _dom_mean = (pd.Timestamp.now().normalize() - _dom_days).dt.days.mean()
+        dom_str = f"{_dom_mean:.0f}d" if pd.notna(_dom_mean) else "—"
+    else:
+        dom_str = "—"
+
     col1, col2, col3, col4 = st.columns(4)
     metrics = [
         ("Active listings",    f"{cur_listings:,}",                                                      listings_delta, listings_dc),
         ("Avg rent / bed",     f"${cur_rpb:,.0f}" if cur_listings and not _math.isnan(cur_rpb) else "—", rpb_delta,      rpb_dc),
-        ("Avg days listed",    "—",                                                                       "—",            "neutral"),
+        ("Avg days listed",    dom_str,                                                                    "—",            "neutral"),
         ("Companies tracked",  f"{cur_cos:,}",                                                            cos_delta,      cos_dc),
     ]
     for col, (label, value, delta, dc) in zip([col1, col2, col3, col4], metrics):
@@ -1310,7 +1319,7 @@ if _active_page == "Overview":
         )
 
     render_filter_bar()
-    render_kpi_row(latest_df, prev_df, active_df, prev_active_df)
+    render_kpi_row(latest_df, prev_df, active_df, prev_active_df, df_full=df)
 
     # ── KPI history toggle buttons ────────────────────────────────────────────
     _KPI_DEFS = [
@@ -1552,7 +1561,7 @@ if _active_page == "Overview":
             label_visibility="collapsed", key="act_days",
         )
 
-    _act_cutoff = (pd.Timestamp.now() - pd.Timedelta(days=act_days)).normalize()
+    _act_cutoff = latest_date - pd.Timedelta(days=act_days)
     _act_cols   = ["scraped_date", "address", "company", "bedrooms", "rent", "available"]
 
     _new_act = filtered[
@@ -1701,7 +1710,7 @@ if _active_page == "Pricing Intelligence":
 
     _n_excluded  = len(active_df) - len(pricing_df)
 
-    render_kpi_row(latest_df, prev_df, active_df, prev_active_df)
+    render_kpi_row(latest_df, prev_df, active_df, prev_active_df, df_full=df)
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
 
     if _n_excluded > 0:
@@ -2041,7 +2050,7 @@ if _active_page == "Map":
         )
 
         # ── Weekly activity (full unfiltered dataset) ─────────────────────────
-        _cutoff = (pd.Timestamp.now() - pd.Timedelta(days=7)).normalize()
+        _cutoff = latest_date - pd.Timedelta(days=7)
 
         def _prep_week_df(event_type, status_lbl, dom_lbl_fn):
             w = filtered[(filtered["event"] == event_type) & (filtered["scraped_date"] >= _cutoff)].copy()
@@ -2760,7 +2769,7 @@ if _active_page == "Companies":
 
     def _add_dom(frame: pd.DataFrame) -> pd.DataFrame:
         f = frame.join(_url_first_seen, on="url", how="left")
-        f["days_listed"] = (f["scraped_date"] - f["first_seen"]).dt.days.fillna(0).astype(int)
+        f["days_listed"] = (pd.Timestamp.now().normalize() - f["first_seen"]).dt.days.fillna(0).astype(int)
         return f
 
     _co_active    = _add_dom(_co_active)
