@@ -1561,7 +1561,7 @@ if _active_page == "Overview":
             label_visibility="collapsed", key="act_days",
         )
 
-    _act_cutoff = latest_date - pd.Timedelta(days=act_days)
+    _act_cutoff = latest_date - pd.Timedelta(days=act_days - 1)
     _act_cols   = ["scraped_date", "address", "company", "bedrooms", "rent", "available"]
 
     _new_act = filtered[
@@ -2050,7 +2050,7 @@ if _active_page == "Map":
         )
 
         # ── Weekly activity (full unfiltered dataset) ─────────────────────────
-        _cutoff = latest_date - pd.Timedelta(days=7)
+        _cutoff = latest_date - pd.Timedelta(days=6)
 
         def _prep_week_df(event_type, status_lbl, dom_lbl_fn):
             w = filtered[(filtered["event"] == event_type) & (filtered["scraped_date"] >= _cutoff)].copy()
@@ -3285,7 +3285,7 @@ def generate_market_report() -> str:
     _avg_dom       = _active["days_on_market"].mean() if _n_active else 0
 
     # Weekly new listings
-    _cutoff_1w = pd.Timestamp(_today - pd.Timedelta(days=7))
+    _cutoff_1w = pd.Timestamp(_today - pd.Timedelta(days=6))
     _new_week  = _rdf[pd.to_datetime(_rdf["scraped_date"], errors="coerce") >= _cutoff_1w]
     _new_week_added   = len(_new_week[_new_week["event"] == "new"])
     _new_week_removed = len(_new_week[_new_week["event"] == "removed"])
