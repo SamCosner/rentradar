@@ -100,12 +100,18 @@ def load_city_lookup():
                 continue
             key = normalize_for_lookup(raw)
             use_type = row.get("Location Use Type", "").lower()
-            if "single family" in use_type:
+            if "single family" in use_type or "single-family" in use_type:
                 prop_type = "House"
-            elif "multi" in use_type or "apartment" in use_type:
+            elif "multi" in use_type or "apartment" in use_type or "condo" in use_type:
                 prop_type = "Apartment"
-            elif "duplex" in use_type or "two family" in use_type:
+            elif "duplex" in use_type or "two family" in use_type or "2 family" in use_type:
                 prop_type = "Duplex/Triplex"
+            elif "triplex" in use_type or "three family" in use_type or "3 family" in use_type:
+                prop_type = "Duplex/Triplex"
+            elif "townhouse" in use_type or "townhome" in use_type:
+                prop_type = "Apartment"
+            elif "mobile" in use_type:
+                prop_type = "House"
             else:
                 prop_type = ""
             lookup[key] = {
@@ -247,7 +253,15 @@ def parse_listing(item, company):
                 except ValueError:
                     available = available_raw
 
-        property_type = infer_property_type(address) if address else ""
+        if address:
+            norm_key = normalize_for_lookup(address)
+            city_info = city_lookup.get(norm_key) if city_lookup else None
+            if city_info and city_info.get("property_type"):
+                property_type = city_info["property_type"]
+            else:
+                property_type = infer_property_type(address)
+        else:
+            property_type = ""
         pets, parking, laundry, utilities = extract_amenities(full_text)
 
         if not address:
