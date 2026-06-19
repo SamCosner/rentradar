@@ -1395,9 +1395,9 @@ if _active_page == "Overview":
 
     # Signals 2 & 3: compare current active snapshot to 30 days ago
     _mpi_n_active  = len(active_df)
-    _mpi_inv_chg   = 0.0
+    _mpi_inv_chg   = None
     _mpi_inv       = 0.5
-    _mpi_rent_chg  = 0.0
+    _mpi_rent_chg  = None
     _mpi_rent      = 0.5
 
     _mpi_df_prev = filtered[filtered["scraped_date"] <= _mpi_month_ago]
@@ -1428,8 +1428,10 @@ if _active_page == "Overview":
     else:
         _mpi_label, _mpi_color, _mpi_bg = "Landlords' Market", "#DC2626", "#FEF2F2"
 
-    _mpi_inv_color  = "#DC2626" if _mpi_inv_chg  < -0.02 else "#16A34A" if _mpi_inv_chg  > 0.02 else "#6B7280"
-    _mpi_rent_color = "#DC2626" if _mpi_rent_chg >  0.01 else "#16A34A" if _mpi_rent_chg < -0.01 else "#6B7280"
+    _mpi_inv_color  = "#6B7280" if _mpi_inv_chg  is None else "#DC2626" if _mpi_inv_chg  < -0.02 else "#16A34A" if _mpi_inv_chg  > 0.02 else "#6B7280"
+    _mpi_rent_color = "#6B7280" if _mpi_rent_chg is None else "#DC2626" if _mpi_rent_chg >  0.01 else "#16A34A" if _mpi_rent_chg < -0.01 else "#6B7280"
+    _mpi_inv_str    = "—" if _mpi_inv_chg  is None else f"{_mpi_inv_chg:+.1%}"
+    _mpi_rent_str   = "—" if _mpi_rent_chg is None else f"{_mpi_rent_chg:+.1%}"
     _mpi_abs_total  = _mpi_n_new + _mpi_n_rem
 
     # ── Active Listings by Company chart ──────────────────────────────────────
@@ -1513,11 +1515,11 @@ if _active_page == "Overview":
     <div style="display:flex;justify-content:space-between;font-size:12px;
       padding:5px 0;border-bottom:1px solid #F9FAFB;">
       <span style="color:#6B7280;">30d inventory</span>
-      <span style="color:{_mpi_inv_color};font-weight:500;">{_mpi_inv_chg:+.1%}</span>
+      <span style="color:{_mpi_inv_color};font-weight:500;">{_mpi_inv_str}</span>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;">
       <span style="color:#6B7280;">30d rent trend</span>
-      <span style="color:{_mpi_rent_color};font-weight:500;">{_mpi_rent_chg:+.1%}</span>
+      <span style="color:{_mpi_rent_color};font-weight:500;">{_mpi_rent_str}</span>
     </div>
   </div>
 </div>"""
