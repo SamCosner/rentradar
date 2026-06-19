@@ -320,15 +320,22 @@ def load_last_seen():
     """Load most recent row per URL from Supabase, falling back to local CSV."""
     last_seen = {}
     try:
-        result = supabase.table("listings")\
-            .select("*")\
-            .neq("event", "removed")\
-            .order("scraped_date", desc=True)\
-            .execute()
-        for row in result.data:
-            key = make_key(row)
-            if key and key not in last_seen:
-                last_seen[key] = row
+        page_size = 1000
+        offset = 0
+        while True:
+            result = supabase.table("listings")\
+                .select("*")\
+                .neq("event", "removed")\
+                .order("scraped_date", desc=True)\
+                .range(offset, offset + page_size - 1)\
+                .execute()
+            for row in result.data:
+                key = make_key(row)
+                if key and key not in last_seen:
+                    last_seen[key] = row
+            if len(result.data) < page_size:
+                break
+            offset += page_size
     except Exception as e:
         print(f"Supabase load error: {e}")
         print("Falling back to local CSV...")
