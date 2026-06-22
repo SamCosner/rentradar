@@ -339,17 +339,20 @@ def load_last_seen():
         while True:
             result = supabase.table("listings")\
                 .select("*")\
-                .neq("event", "removed")\
                 .order("scraped_date", desc=True)\
                 .range(offset, offset + page_size - 1)\
                 .execute()
             for row in result.data:
                 key = make_key(row)
                 if key and key not in last_seen:
+                    # Record the most recent row per URL regardless of event type.
+                    # If the latest event is "removed" the listing is already gone.
                     last_seen[key] = row
             if len(result.data) < page_size:
                 break
             offset += page_size
+        # Drop URLs whose most recent event is "removed" — they are already gone
+        last_seen = {k: v for k, v in last_seen.items() if v.get("event") != "removed"}
     except Exception as e:
         print(f"Supabase load error: {e}")
         print("Falling back to local CSV...")
