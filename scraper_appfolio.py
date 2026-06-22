@@ -495,7 +495,7 @@ changed_count = sum(1 for r in rows_to_save if r["event"] == "changed")
 removed_count = sum(1 for r in rows_to_save if r["event"] == "removed")
 skipped_count = len(bloom_only) - new_count - changed_count
 
-print(f"── Summary ──────────────────────────")
+print(f"-- Summary ----------------------------------")
 print(f"  Total Bloomington listings scraped: {len(bloom_only)}")
 print(f"  New listings:     {new_count}")
 print(f"  Changed listings: {changed_count}")
