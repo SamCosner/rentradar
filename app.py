@@ -1159,12 +1159,12 @@ def render_kpi_row(latest_df: pd.DataFrame, prev_df: pd.DataFrame,
 
 # ── KPI history ───────────────────────────────────────────────────────────────
 @st.cache_data
-def compute_kpi_history(_df):
+def compute_kpi_history(src_df):
     """For each scrape date, compute active listings, avg rent/bed, avg days listed, companies."""
-    dates = sorted(_df["scraped_date"].dropna().unique())
+    dates = sorted(src_df["scraped_date"].dropna().unique())
     rows = []
     for d in dates:
-        sub = _df[_df["scraped_date"] <= d]
+        sub = src_df[src_df["scraped_date"] <= d]
         url_last = sub.sort_values("scraped_date").groupby("url").last().reset_index()
         active = url_last[url_last["event"] != "removed"]
         n = len(active)
@@ -1183,10 +1183,10 @@ def compute_kpi_history(_df):
 
 
 @st.cache_data
-def compute_mpi_history(_df):
+def compute_mpi_history(src_df):
     """For each scrape date, recompute the Market Pressure Index using the same three-signal formula."""
-    dates      = sorted(_df["scraped_date"].dropna().unique())
-    first_seen = _df.groupby("url")["scraped_date"].min()  # compute once for the whole dataset
+    dates      = sorted(src_df["scraped_date"].dropna().unique())
+    first_seen = src_df.groupby("url")["scraped_date"].min()  # compute once for the whole dataset
     rows = []
     for d in dates:
         week_ago  = d - pd.Timedelta(days=7)
@@ -1195,17 +1195,17 @@ def compute_mpi_history(_df):
         # Unique new: listings whose first ever appearance falls in [week_ago, d]
         n_new  = int(((first_seen >= week_ago) & (first_seen <= d)).sum())
         # Unique removed: distinct URLs with event="removed" in [week_ago, d]
-        recent = _df[(_df["scraped_date"] >= week_ago) & (_df["scraped_date"] <= d)]
+        recent = src_df[(src_df["scraped_date"] >= week_ago) & (src_df["scraped_date"] <= d)]
         n_rem  = int(recent[recent["event"] == "removed"]["url"].nunique())
         absorb = n_rem / max(1, n_new + n_rem)
 
-        df_d   = _df[_df["scraped_date"] <= d]
+        df_d   = src_df[src_df["scraped_date"] <= d]
         ul_d   = df_d.sort_values("scraped_date").groupby("url").last().reset_index()
         active = ul_d[ul_d["event"] != "removed"]
         n_act  = len(active)
         inv, rent = 0.5, 0.5
 
-        df_prev = _df[_df["scraped_date"] <= month_ago]
+        df_prev = src_df[src_df["scraped_date"] <= month_ago]
         if not df_prev.empty:
             ul_prev     = df_prev.sort_values("scraped_date").groupby("url").last().reset_index()
             active_prev = ul_prev[ul_prev["event"] != "removed"]
