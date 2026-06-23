@@ -651,13 +651,13 @@ STUDENT_BOUNDARY = [
 # North boundary at 10th St (~39.178) excludes hospital and north Bloomington.
 # Coordinates are [lng, lat]. Adjust points here to tune the zone boundary.
 STUDENT_RENTAL_ZONE = [
-    [-86.542, 39.178],  # NW: 10th St, Rogers/Grant area (west of campus)
+    [-86.542, 39.190],  # NW: highest point of HW 45 on west side
     [-86.542, 39.147],  # SW: Tapp Rd / Rogers St area
     [-86.516, 39.139],  # S: south of campus, ~1.7 mi south of 3rd St
     [-86.487, 39.147],  # SE: Henderson area south
     [-86.484, 39.175],  # E: Henderson area north
     [-86.487, 39.178],  # NE: 10th St, east of campus
-    [-86.542, 39.178],  # close polygon
+    [-86.542, 39.190],  # close polygon
 ]
 
 
