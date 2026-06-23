@@ -646,9 +646,19 @@ STUDENT_BOUNDARY = [
     [-86.526959, 39.168509],
 ]
 
-# Center point for the student rental boundary circle (10th St & Woodlawn Ave)
-RING_CENTER_LAT = 39.171661
-RING_CENTER_LNG = -86.523504
+# Polygon covering the student rental zone around IU Bloomington.
+# Traces the south, west, and east residential areas around campus.
+# North boundary at 10th St (~39.178) excludes hospital and north Bloomington.
+# Coordinates are [lng, lat]. Adjust points here to tune the zone boundary.
+STUDENT_RENTAL_ZONE = [
+    [-86.542, 39.178],  # NW: 10th St, Rogers/Grant area (west of campus)
+    [-86.542, 39.147],  # SW: Tapp Rd / Rogers St area
+    [-86.516, 39.139],  # S: south of campus, ~1.7 mi south of 3rd St
+    [-86.487, 39.147],  # SE: Henderson area south
+    [-86.484, 39.175],  # E: Henderson area north
+    [-86.487, 39.178],  # NE: 10th St, east of campus
+    [-86.542, 39.178],  # close polygon
+]
 
 
 def _dist_point_to_segment_miles(plat, plng, alat, alng, blat, blng):
@@ -677,6 +687,20 @@ def dist_to_campus_edge_miles(lat, lng):
         if d < min_dist:
             min_dist = d
     return min_dist
+
+
+def point_in_polygon(lat, lng, polygon):
+    """Ray-casting point-in-polygon test. polygon is [[lng, lat], ...]."""
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]   # xi=lng, yi=lat
+        xj, yj = polygon[j]
+        if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
@@ -837,8 +861,6 @@ def _init_state():
     for pt in _all_prop_types:
         if f"pt_{pt}" not in ss:
             ss[f"pt_{pt}"] = True
-    if "student_radius" not in ss:
-        ss.student_radius = 0.5
     if "rental_type_filter" not in ss:
         ss.rental_type_filter = "All"
     if "market_report" not in ss:
@@ -849,8 +871,12 @@ def _init_state():
 
 _init_state()
 
-# is_student_rental recalculated each run using the current radius from session state
-df["is_student_rental"] = df["dist_miles"] <= st.session_state.get("student_radius", 0.5)
+df["is_student_rental"] = df.apply(
+    lambda r: point_in_polygon(r["lat"], r["lng"], STUDENT_RENTAL_ZONE)
+    if pd.notna(r["lat"]) and pd.notna(r["lng"]) and r["lat"] != 0 and r["lng"] != 0
+    else False,
+    axis=1,
+)
 
 
 # ── Active filter count ───────────────────────────────────────────────────────
@@ -1995,16 +2021,6 @@ if _active_page == "Map":
         [245, 158,  11, 200], [239,  68,  68, 200],
     ]
 
-    # ── Helper functions ───────────────────────────────────────────────────────
-    def make_circle(center_lat, center_lng, radius_miles, n_points=64):
-        lat_deg = radius_miles * 0.01449
-        lng_deg = radius_miles * 0.01449 / math.cos(math.radians(center_lat))
-        return [
-            [center_lng + lng_deg * math.sin(2 * math.pi * i / n_points),
-             center_lat + lat_deg * math.cos(2 * math.pi * i / n_points)]
-            for i in range(n_points + 1)
-        ]
-
     def vacancy_color(days):
         if pd.isna(days):  return [150, 150, 150, 180]
         elif days <= 7:    return [37,  99,  235, 220]
@@ -2044,9 +2060,6 @@ if _active_page == "Map":
             if r_max > r_min else 1.0
         )
 
-        # dist_miles is pre-computed on df and carried through active_df → map_df
-        # Refresh is_student_rental on map_df using the current slider value
-        map_df["is_student_rental"] = map_df["dist_miles"] <= ss.get("student_radius", 0.5)
         map_df["rental_type_label"] = map_df["is_student_rental"].map(
             {True: "Student Rental", False: "Non-Student"}
         )
@@ -2075,23 +2088,22 @@ if _active_page == "Map":
         n_new    = len(new_week_df)
         n_leased = len(leased_week_df)
 
-        # ── Student rental boundary circle ────────────────────────────────────
-        _cur_radius = ss.get("student_radius", 0.5)
-        _boundary_circle = make_circle(RING_CENTER_LAT, RING_CENTER_LNG, _cur_radius)
-        _boundary_label_lat = RING_CENTER_LAT + _cur_radius * 0.01449
+        # ── Student rental zone boundary polygon ──────────────────────────────
         student_boundary_layer = pdk.Layer(
             "PathLayer",
-            data=[{"path": _boundary_circle}],
+            data=[{"path": STUDENT_RENTAL_ZONE}],
             get_path="path",
             get_color=[37, 99, 235, 200],
             get_width=3,
             width_min_pixels=2,
             pickable=False,
         )
+        _zone_center_lng = (STUDENT_RENTAL_ZONE[0][0] + STUDENT_RENTAL_ZONE[-2][0]) / 2
+        _zone_top_lat    = max(pt[1] for pt in STUDENT_RENTAL_ZONE) + 0.002
         student_boundary_label_layer = pdk.Layer(
             "TextLayer",
-            data=[{"position": [RING_CENTER_LNG, _boundary_label_lat],
-                   "label": f"Student rental boundary ({_cur_radius:.2f} mi)"}],
+            data=[{"position": [_zone_center_lng, _zone_top_lat],
+                   "label": "Student rental zone"}],
             get_position="position",
             get_text="label",
             get_size=12,
@@ -2208,17 +2220,9 @@ button[aria-label^="Leased this week"]:hover { border-color:#16a34a!important; c
                 st.checkbox("Show IU campus boundary",      key="map_show_campus")
 
             st.markdown('<div class="fsep"></div>', unsafe_allow_html=True)
-            st.markdown('<div class="flbl">Student Rental Radius</div>', unsafe_allow_html=True)
-            st.slider(
-                "Miles from campus edge",
-                min_value=0.1, max_value=2.0,
-                step=0.05, format="%.2f mi",
-                key="student_radius",
-                label_visibility="collapsed",
-            )
             st.markdown(
-                f'<div style="color:#9ca3af;font-size:12px;margin-top:2px;">'
-                f'Units within {ss.student_radius:.2f} mi of campus edge are classified as student rentals</div>',
+                '<div style="color:#9ca3af;font-size:12px;margin-top:2px;">'
+                'Student rentals are units within the fixed geographic zone shown above.</div>',
                 unsafe_allow_html=True,
             )
 
@@ -3228,9 +3232,7 @@ def generate_market_report() -> str:
     """Build a 15-section markdown market intelligence report from unfiltered data."""
     import datetime as _dt
 
-    _radius = st.session_state.get("student_radius", 0.5)
     _rdf = df.copy()
-    _rdf["is_student_rental"] = _rdf["dist_miles"] <= _radius
 
     # Active listings: last event per URL is not "removed"
     _last = (
@@ -3454,17 +3456,15 @@ if _active_page == "AI Export":
         "Generate a complete market intelligence snapshot, then copy and paste it into "
         "<strong>Claude</strong> or <strong>ChatGPT</strong> to ask questions, surface insights, "
         "or create summaries. The report uses all listings in the database — your current filters "
-        "do not affect it. The <strong>student rental radius</strong> from the Map page does apply."
+        "do not affect it. Student rentals are classified by a fixed geographic zone around campus."
         "</div>"
         "</div>",
         unsafe_allow_html=True,
     )
 
-    _cur_radius = ss.get("student_radius", 0.5)
     st.markdown(
-        f'<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">'
-        f'Student rental boundary: <strong>{_cur_radius:.2f} mi</strong> from campus edge '
-        f'(adjust on the Map page)</div>',
+        '<div style="color:#6b7280;font-size:13px;margin-bottom:16px;">'
+        'Student rentals are units within the geographic zone shown on the Map page.</div>',
         unsafe_allow_html=True,
     )
 
