@@ -1160,8 +1160,15 @@ def render_kpi_row(latest_df: pd.DataFrame, prev_df: pd.DataFrame,
 # ── KPI history ───────────────────────────────────────────────────────────────
 @st.cache_data
 def compute_kpi_history(src_df):
-    """For each scrape date, compute active listings, avg rent/bed, avg days listed, companies."""
-    dates = sorted(src_df["scraped_date"].dropna().unique())
+    """For each calendar day, compute active listings, avg rent/bed, avg days listed, companies.
+
+    Every metric is a "state as of day d" figure, so it is defined for days the scraper
+    did not run (weekends, outages) — those days carry the last known state forward.
+    """
+    _obs = src_df["scraped_date"].dropna()
+    if _obs.empty:
+        return pd.DataFrame(columns=["date", "active", "rpb", "dom", "companies"])
+    dates = pd.date_range(_obs.min(), _obs.max(), freq="D")
     rows = []
     for d in dates:
         sub = src_df[src_df["scraped_date"] <= d]
@@ -1184,8 +1191,11 @@ def compute_kpi_history(src_df):
 
 @st.cache_data
 def compute_mpi_history(src_df):
-    """For each scrape date, recompute the Market Pressure Index using the same three-signal formula."""
-    dates      = sorted(src_df["scraped_date"].dropna().unique())
+    """For each calendar day, recompute the Market Pressure Index using the same three-signal formula."""
+    _obs = src_df["scraped_date"].dropna()
+    if _obs.empty:
+        return pd.DataFrame(columns=["date", "mpi"])
+    dates      = pd.date_range(_obs.min(), _obs.max(), freq="D")
     first_seen = src_df.groupby("url")["scraped_date"].min()  # compute once for the whole dataset
     rows = []
     for d in dates:
