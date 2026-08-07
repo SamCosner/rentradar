@@ -233,8 +233,16 @@ def parse_listing(item, company):
             room_match = re.search(
                 r'private\s+room\s+in\s+(\d+)\s*bd[^/]*/\s*([\d.]+)\s*ba',
                 full_text, re.I)
-            beds = room_match.group(1) if room_match else ""
-            baths = room_match.group(2) if room_match else ""
+            if room_match:
+                beds  = room_match.group(1)
+                baths = room_match.group(2)
+            else:
+                # Single-room rentals render as "Bed / Bath 1 bd" with no bath count, so
+                # the patterns above miss them and the bedroom count is lost entirely.
+                bed_only = re.search(r'(studio|\d+)\s*bd\b', full_text, re.I)
+                raw_beds = bed_only.group(1).strip().lower() if bed_only else ""
+                beds  = "0" if raw_beds == "studio" else raw_beds
+                baths = ""
 
         sqft_match = re.search(r'([\d,]+)\s*sq\.?\s*ft', full_text, re.I)
         sqft = sqft_match.group(1).replace(",", "") if sqft_match else ""
